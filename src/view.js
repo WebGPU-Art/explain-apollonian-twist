@@ -19,10 +19,18 @@ export async function mountShader(root, opts = {}) {
   let dirty = true, visible = false
   let last = performance.now(), frames = 0, fpsT = last, tick = 0
   const dprScale = opts.dprScale ?? 0.75
+  // 按需驱动:只有在视口内且(正在播放或有改动)时才排下一帧,离开视口后循环完全停止
+  let raf = 0
+  const kick = () => {
+    if (raf || !visible) return
+    last = performance.now()
+    raf = requestAnimationFrame(frame)
+  }
+  const mark = () => { dirty = true; kick() }
 
   const api = {
     params,
-    redraw: () => { dirty = true },
+    redraw: () => { mark() },
     toWorld(e) {
       const r = canvas.getBoundingClientRect()
       const qx = (e.clientX - r.left) / r.width, qy = (e.clientY - r.top) / r.height
@@ -36,7 +44,21 @@ export async function mountShader(root, opts = {}) {
     refresh: () => {},
   }
   const ctlHost = root.querySelector('.ctl')
-  if (ctlHost && opts.controls) api.refresh = buildControls(ctlHost, params, opts.controls, () => { dirty = true })
+  if (ctlHost && opts.controls) api.refresh = buildControls(ctlHost, params, opts.controls, () => { syncBtn(); mark() })
+
+  // 暂停 / 播放按钮(只给一开始就在动的画面加)
+  let syncBtn = () => {}
+  if (params.play && params.speed > 0) {
+    const btn = document.createElement('button')
+    btn.className = 'pausebtn'
+    btn.type = 'button'
+    syncBtn = () => { btn.textContent = params.play ? '⏸ 暂停' : '▶ 播放' }
+    btn.onclick = () => { params.play = params.play ? 0 : 1; syncBtn(); api.refresh(); mark() }
+    ;(root.querySelector('.stack') || canvas.parentElement).append(btn)
+    syncBtn()
+  }
+  const baseRefresh = api.refresh
+  api.refresh = () => { baseRefresh(); syncBtn() }
 
   let drag = null
   canvas.addEventListener('pointerdown', (e) => {
@@ -47,17 +69,17 @@ export async function mountShader(root, opts = {}) {
     if (drag && opts.pan !== false) {
       const r = canvas.getBoundingClientRect()
       if (Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) > 3) drag.moved = true
-      if (opts.dragPick) { opts.onPick?.(api.toWorld(e), api); dirty = true; return }
+      if (opts.dragPick) { opts.onPick?.(api.toWorld(e), api); mark(); return }
       params.cx = drag.cx - ((e.clientX - drag.x) / r.height) * 2 * params.scale
       params.cy = drag.cy + ((e.clientY - drag.y) / r.height) * 2 * params.scale
-      dirty = true
+      mark()
     } else if (!drag && !opts.clickPick) {
       opts.onPick?.(api.toWorld(e), api)
-      dirty = true
+      mark()
     }
   })
   canvas.addEventListener('pointerup', (e) => {
-    if (drag && !drag.moved) { opts.onPick?.(api.toWorld(e), api); dirty = true }
+    if (drag && !drag.moved) { opts.onPick?.(api.toWorld(e), api); mark() }
     drag = null
   })
   canvas.addEventListener('pointercancel', () => { drag = null })
@@ -69,15 +91,15 @@ export async function mountShader(root, opts = {}) {
       const after = api.toWorld(e)
       params.cx += before[0] - after[0]
       params.cy += before[1] - after[1]
-      dirty = true
+      mark()
     }, { passive: false })
   }
   root.querySelector('.reset-view')?.addEventListener('click', () => {
-    params.cx = 0; params.cy = 0; params.scale = opts.params?.scale ?? 1; dirty = true
+    params.cx = 0; params.cy = 0; params.scale = opts.params?.scale ?? 1; mark()
   })
 
   function frame(now) {
-    requestAnimationFrame(frame)
+    raf = 0
     const dt = Math.min(0.1, (now - last) / 1000)
     last = now
     if (!visible) return
@@ -100,14 +122,14 @@ export async function mountShader(root, opts = {}) {
     }
     dirty = false
     frames++
+    if (params.play && params.speed > 0) kick()
     if (fps && now - fpsT > 500) {
       fps.textContent = `${Math.round((frames * 1000) / (now - fpsT))} fps`
       frames = 0
       fpsT = now
     }
   }
-  onVisible(root, (v) => { visible = v; dirty = true; last = performance.now() })
-  window.addEventListener('resize', () => { dirty = true })
-  requestAnimationFrame(frame)
+  onVisible(root, (v) => { visible = v; if (v) mark() })
+  window.addEventListener('resize', () => { mark() })
   return api
 }

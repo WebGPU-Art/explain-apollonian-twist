@@ -44,3 +44,8 @@ details{margin:12px 0}summary{cursor:pointer;color:var(--acc)}
 .stepper{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
 .stepper button{min-width:34px}.stepper button.on{background:var(--acc);color:#0a0d08;border-color:var(--acc);font-weight:600}
 .st-text{min-height:7em}
+.demo{position:relative}
+.pausebtn{position:absolute;top:10px;right:10px;z-index:3;background:#07090ccc;backdrop-filter:blur(4px);padding:3px 10px}
+.pausebtn:hover{border-color:var(--acc)}
+.demo > .pausebtn{top:34px;right:22px}
+.play .stage .pausebtn{top:12px;right:12px}

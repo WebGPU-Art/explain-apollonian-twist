@@ -19,6 +19,15 @@ export async function mountViewer(root, opts = {}) {
 
   let visible = false
   let dirty = true
+  let paused = false
+  let raf = 0
+  // 按需驱动:只有在视口内且(正在动画或有改动)时才排下一帧
+  const kick = () => {
+    if (raf || !visible) return
+    last = performance.now()
+    raf = requestAnimationFrame(frame)
+  }
+  const mark = () => { dirty = true; kick() }
   let simTime = opts.startTime ?? 6.0
   let last = performance.now()
   const fps = root.querySelector('.fps')
@@ -27,7 +36,7 @@ export async function mountViewer(root, opts = {}) {
 
   let refresh = () => {}
   if (ctlHost && opts.controls) {
-    refresh = buildControls(ctlHost, params, opts.controls, () => { dirty = true })
+    refresh = buildControls(ctlHost, params, opts.controls, () => { mark() })
   }
 
   // 相机交互
@@ -40,26 +49,28 @@ export async function mountViewer(root, opts = {}) {
     if (!drag) return
     cam.yaw = drag.yaw - (e.clientX - drag.x) * 0.008
     cam.pitch = Math.max(-1.45, Math.min(1.45, drag.pitch + (e.clientY - drag.y) * 0.008))
-    dirty = true
+    mark()
   })
-  const up = () => { drag = null }
+  const up = () => { drag = null; kick() }
   canvas.addEventListener('pointerup', up)
   canvas.addEventListener('pointercancel', up)
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault()
     cam.dist = Math.max(0.3, Math.min(12, cam.dist * Math.exp(e.deltaY * 0.0012)))
-    dirty = true
+    mark()
   }, { passive: false })
 
+  const isAnimating = () => !paused && (params.speed > 0 || (params.autoRotate && !drag))
+
   function frame(now) {
-    requestAnimationFrame(frame)
+    raf = 0
     const dt = Math.min(0.1, (now - last) / 1000)
     last = now
     if (!visible) return
-    const animating = params.speed > 0 || (params.autoRotate && !drag)
+    const animating = isAnimating()
     if (!animating && !dirty) return
-    simTime += dt * 0.5 * params.speed
-    if (params.autoRotate && !drag) cam.yaw += dt * 0.08
+    if (!paused) simTime += dt * 0.5 * params.speed
+    if (animating && params.autoRotate && !drag) cam.yaw += dt * 0.08
     opts.onFrame?.(params, cam)
     fitCanvas(canvas, params.res)
     const cp = Math.cos(cam.pitch)
@@ -78,15 +89,24 @@ export async function mountViewer(root, opts = {}) {
     pass.draw()
     dirty = false
     frames++
+    if (isAnimating()) kick()
     if (fps && now - fpsT > 500) {
       fps.textContent = `${Math.round((frames * 1000) / (now - fpsT))} fps · ${canvas.width}×${canvas.height}`
       frames = 0
       fpsT = now
     }
   }
-  onVisible(root, (v) => { visible = v; dirty = true; last = performance.now() })
-  requestAnimationFrame(frame)
-  return { params, cam, refresh, redraw: () => { dirty = true } }
+  onVisible(root, (v) => { visible = v; if (v) mark() })
+  if (params.speed > 0 || params.autoRotate) {
+    const btn = document.createElement('button')
+    btn.className = 'pausebtn'
+    btn.type = 'button'
+    const sync = () => { btn.textContent = paused ? '▶ 播放' : '⏸ 暂停' }
+    btn.onclick = () => { paused = !paused; sync(); mark() }
+    ;(root.querySelector('.stack') || canvas.parentElement).append(btn)
+    sync()
+  }
+  return { params, cam, refresh, redraw: () => { mark() } }
 }
 
 function norm(v) {
