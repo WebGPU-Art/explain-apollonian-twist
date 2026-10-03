@@ -1,11 +1,11 @@
-# Explain Apollonian Twist
+# Explain Apollian Twist
 
-交互式讲解 [soluble](https://github.com/WebGPU-Art/soluble) 里的 `apollonian-twist.wgsl` 着色器:折叠、球反演、Apollonian 距离估计、第四维扭转、包围球与卫星团簇、光线步进、法线与着色。
+交互式讲解 Shadertoy [Apollian with a twist (Wl3fzM)](https://www.shadertoy.com/view/Wl3fzM)(CC0):折叠、球反演、距离估计、第四维 twist、两层缩放、地板与两盏灯的阴影、配色辉光与后处理。
 
 - `index.html`:分节讲解,每节带可交互的 WebGPU / Canvas 演示
-- `play.html`:全屏 3D,所有参数可调
-- `src/apollonian-twist.wgsl`:原始着色器(只用于页面展示源码)
-- `src/scene3d.js`:原着色器的可调版本(常量换成 uniform,并加了调试视图)
+- `play.html`:全屏,所有参数可调
+- `src/shader.js`:原 GLSL 的 WGSL 移植(常量换成 uniform)
+- `src/apollian-twist.glsl`:原始 GLSL,仅用于页面展示
 
 需要支持 WebGPU 的浏览器。
 

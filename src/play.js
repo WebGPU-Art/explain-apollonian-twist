@@ -1,31 +1,23 @@
-import { mountViewer } from './viewer3d.js'
-import { MODE_OPTIONS, SCENE_DEFAULTS } from './scene3d.js'
+import { mountShader } from './view.js'
+import { MODES, DEFAULTS } from './shader.js'
 
-mountViewer(document.querySelector('#play'), {
-  params: { res: 0.5 },
+const R = (key, label, min, max, step, digits) => ({ key, label, type: 'range', min, max, step, digits })
+const K = (key, label) => ({ key, label, type: 'check' })
+
+mountShader(document.querySelector('#play'), {
+  dprScale: 0.75,
   controls: [
-    { key: 'mode', label: '视图', type: 'select', options: MODE_OPTIONS },
-    { key: 'speed', label: '动画速度', type: 'range', min: 0, max: 4, step: 0.05, digits: 2 },
-    { key: 'autoRotate', label: '相机自转', type: 'check' },
-    { key: 'iters', label: '迭代次数', type: 'range', min: 0, max: 16, step: 1 },
-    { key: 's', label: 's(反演强度)', type: 'range', min: 0.8, max: 2.0, step: 0.005 },
-    { key: 'zoom', label: 'zoom', type: 'range', min: 1, max: 10, step: 0.05, digits: 2 },
-    { key: 'wAmp', label: '4D 鼓包幅度', type: 'range', min: 0, max: 0.3, step: 0.001 },
-    { key: 'rot4d', label: '4D 旋转', type: 'check' },
-    { key: 'twist', label: '额外 4D 扭转角', type: 'range', min: -3.14, max: 3.14, step: 0.01, digits: 2 },
-    { key: 'thick', label: '壳厚度倍率', type: 'range', min: 0, max: 6, step: 0.05, digits: 2 },
-    { key: 'bound', label: '包围球', type: 'check' },
-    { key: 'sats', label: '卫星团簇', type: 'check' },
-    { key: 'nIters', label: '法线迭代', type: 'range', min: 1, max: 16, step: 1 },
-    { key: 'stepK', label: '步长系数', type: 'range', min: 0.3, max: 1.5, step: 0.01, digits: 2 },
-    { key: 'focal', label: '焦距', type: 'range', min: 0.8, max: 5, step: 0.05, digits: 2 },
-    { key: 'res', label: '分辨率', type: 'range', min: 0.25, max: 1, step: 0.05, digits: 2 },
+    { key: 'mode', label: '视图', type: 'select', options: MODES },
+    K('play', '播放'), R('speed', '速度', 0, 4, 0.05, 2), R('time', '时间', 0, 400, 0.1, 1),
+    R('iters', '迭代次数', 1, 12, 1), R('s', 's(反演强度)', 0.8, 2, 0.005),
+    R('z', 'z', 1, 12, 0.05, 2), R('zoom', 'zoom', 0.15, 3, 0.01, 2),
+    R('wAmp', 'w 鼓包幅度', 0, 0.5, 0.001), R('tanhK', '鼓包衰减', 0.2, 4, 0.01, 2),
+    R('offR', '漂移幅度 r', 0, 1.5, 0.01, 2), K('rot4d', '4D 旋转'), K('spin', '屏幕自转'),
+    R('floorB', '地板深度 b', -1.2, -0.01, 0.005, 3), R('lightH', '灯高', 0.3, 3, 0.01, 2), R('camT', '相机高度', 1.5, 20, 0.1, 1),
+    R('ss', 'ss', 1, 60, 0.5, 1), K('bugFix', '修正 sp2'),
+    R('lightGain', '地板光强度', 0, 3, 0.01, 2), R('glowGain', '辉光强度', 0, 3, 0.01, 2),
   ],
-}).then((v) => {
-  if (!v) return
-  document.querySelector('#reset').onclick = () => {
-    Object.assign(v.params, SCENE_DEFAULTS, { res: 0.5 })
-    v.refresh()
-    v.redraw()
-  }
+}).then((api) => {
+  if (!api) return
+  document.querySelector('#reset').onclick = () => { Object.assign(api.params, DEFAULTS); api.refresh(); api.redraw() }
 })

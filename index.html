@@ -2,200 +2,195 @@
 <html lang="zh">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Apollonian Twist · 拆解一个 WebGPU 分形着色器</title>
+<title>Apollian with a Twist · 拆解 Shadertoy 分形</title>
 <link rel="stylesheet" href="/src/style.css">
 </head>
 <body>
 <main>
-  <h1>Apollonian Twist</h1>
-  <p class="sub">逐层拆解一个 WebGPU 光线步进分形着色器:折叠、反演、第四维扭转、距离场、着色。每一步都可以动手调。</p>
+  <h1>Apollian with a Twist</h1>
+  <p class="sub">拆解 <a href="https://www.shadertoy.com/view/Wl3fzM" target="_blank" rel="noopener">Shadertoy Wl3fzM</a>(CC0)。只有一个 2D 画面,却用到了折叠、球反演、第四维、一块“地板”和两盏灯。每一步都可以拖动、调参。</p>
 
   <div class="demo" id="hero">
     <span class="fps"></span>
-    <canvas class="wide"></canvas>
+    <div class="stack"><canvas class="gl wide"></canvas></div>
     <div class="ctl"></div>
-    <p class="hint">拖动旋转,滚轮缩放。这就是原着色器的效果:一个主团簇和两个小卫星团簇,在 4D 空间里缓慢翻滚,我们看到的是它们的 3D 截面。</p>
+    <p class="hint">拖动平移,滚轮缩放。这是对原作的 WGSL 移植(下方有对照),所有常量都做成了可调参数。</p>
   </div>
-  <div class="note">需要支持 WebGPU 的浏览器(新版 Chrome / Edge / Safari)。3D 视窗比较吃显卡,离开视口时会自动暂停;卡顿时可以把“分辨率”调低。</div>
+  <div class="note">需要支持 WebGPU 的浏览器(新版 Chrome / Edge / Safari)。离开视口的画面会自动暂停。</div>
 
-  <h2>0 · 总览:一帧画面是怎么来的</h2>
-  <p>这是一个典型的 <b>距离场 + 光线步进</b>(sphere tracing)着色器。整个画面只有一个全屏三角形,所有几何都在片元着色器里用数学“算”出来。数据流如下:</p>
+  <h2>0 · 总览:一帧是怎么来的</h2>
+  <p>先建立直觉。画面里<b>彩色发光的曲线</b>,是一个 4D 分形被一个 2D 平面切开后得到的“零等值线”。曲线之外的黑色区域,是曲线投射在<b>下方一块地板</b>上的阴影,由两盏灯照出来。整个过程可以分成两半:</p>
   <div class="flow">
-    <span><b>fragment_main</b><br>像素 → 光线方向</span><i>→</i>
-    <span><b>trace_scene</b><br>沿光线步进</span><i>→</i>
-    <span><b>map_scene</b><br>3 个团簇取最近</span><i>→</i>
-    <span><b>cluster</b><br>旋转 / 漂移 / 抬到 4D</span><i>→</i>
-    <span><b>apollian</b><br>折叠 + 反演 ×16</span><i>→</i>
-    <span><b>render_scene</b><br>法线 + 光照 + 配色</span>
+    <span><b>df(p)</b><br>p → 距离 d</span><i>→</i>
+    <span><b>weird()</b><br>2D 点抬到 4D、旋转、缩小</span><i>→</i>
+    <span><b>apollian()</b><br>折叠 + 反演 ×7</span>
+  </div>
+  <div class="flow">
+    <span><b>color(p)</b><br>相机射线 → 地板</span><i>→</i>
+    <span><b>两盏灯</b><br>回到曲线平面取 d</span><i>→</i>
+    <span><b>彩虹色 + 辉光</b><br>按到原点的距离上色</span><i>→</i>
+    <span><b>postProcess</b><br>gamma / 对比度 / 暗角</span>
   </div>
   <ol class="toc">
-    <li><a href="#fold">折叠:把空间卷进一个盒子</a></li>
-    <li><a href="#inv">反演:球面内外翻转</a></li>
-    <li><a href="#iter">迭代:Apollonian 结构与距离估计</a></li>
-    <li><a href="#twist">第四维:名字里的 “Twist”</a></li>
-    <li><a href="#cluster">团簇、包围球与卫星</a></li>
-    <li><a href="#march">光线步进</a></li>
-    <li><a href="#shade">法线与着色</a></li>
-    <li><a href="#table">参数速查</a></li>
+    <li><a href="#fold">折叠</a></li>
+    <li><a href="#inv">球反演</a></li>
+    <li><a href="#iter">apollian:迭代与距离</a></li>
+    <li><a href="#twist">weird:第四维的 twist</a></li>
+    <li><a href="#zoom">两层缩放 z 与 zoom</a></li>
+    <li><a href="#light">地板与两盏灯</a></li>
+    <li><a href="#color">配色、辉光与后处理</a></li>
+    <li><a href="#table">参数速查与源码</a></li>
   </ol>
 
-  <!-- 1 -->
-  <h2 id="fold">1 · 折叠:把空间卷进一个盒子</h2>
-  <p><code>apollian()</code> 每一轮的第一步:</p>
-  <pre>p = -1.0 + 2.0 * fract(0.5 * p + 0.5);</pre>
-  <p>它对每个分量做一个周期为 2 的锯齿波,把任意点平移回 <code>[-1, 1]⁴</code> 这个盒子里。效果等价于:整个空间被切成 2×2 的格子,每个格子里放着<b>完全相同的一份</b>内容。所以只要在中间这个盒子里定义好形状,它就自动无限重复。注意这里是平移(<code>fract</code>),不是镜像(<code>abs</code>),所以每个格子是同向复制。</p>
+  <h2 id="fold">1 · 折叠</h2>
+  <p><code>apollian()</code> 每一轮的第一行:</p>
+  <pre>p = -1.0 + 2.0*fract(0.5*p+0.5);</pre>
+  <p>这是周期为 2 的锯齿波:把任意点平移回 <code>[-1, 1]</code> 的盒子里(四个分量各做一次)。等价于把空间切成 2×2 的格子,每个格子里放<b>同一份</b>内容。注意是 <code>fract</code> 平移,不是 <code>abs</code> 镜像,所以每个格子同向复制。</p>
   <div class="demo" id="fold-demo">
     <div class="two">
       <div><canvas class="plane sq"></canvas></div>
       <div>
         <canvas class="graph"></canvas>
         <p class="readout"></p>
-        <p class="hint">拖动粉色点。青色点是它折叠后的位置,一定落在蓝框里。黄色图案在每个格子里都一样:对折叠后的坐标来说,它们是同一个东西。</p>
+        <p class="hint">拖动粉色点,青色点是它折叠后的位置,一定落在蓝框里。黄色图案在每个格子里都一样。</p>
       </div>
     </div>
   </div>
 
-  <!-- 2 -->
-  <h2 id="inv">2 · 反演:球面内外翻转</h2>
-  <p>第二步是球反演,半径为 <code>√s</code>:</p>
-  <pre>let r2 = max(dot(p, p), 1.0e-5);
-let k = s / r2;      // s = 1.24
-p = p * k;
-scale = scale * k;   // 记录累计的缩放倍数</pre>
-  <p>反演把球内的点翻到球外、球外的点翻到球内,并且有个关键性质:<b>圆(球)映成圆(球)</b>,穿过原点的圆会变成直线,反之亦然。靠近原点的小东西会被放大成很大的东西,这就是 <code>k</code> 会远大于 1、<code>scale</code> 不断变大的原因。</p>
+  <h2 id="inv">2 · 球反演</h2>
+  <pre>float r2 = dot(p,p);
+float k  = s/r2;      // s = 1.2
+p       *= k;
+scale   *= k;         // 记录累计的放大倍数</pre>
+  <p>点 <code>p</code> 被换成 <code>s·p/|p|²</code>:球内和球外互换,而且<b>圆映成圆</b>(穿过原点的圆变成直线)。越靠近原点放大得越多,所以 <code>k</code> 常常远大于 1。四个分量一起参与,即反演发生在 4D 里,下图只是 2D 的类比。</p>
   <div class="demo" id="inv-demo">
     <div class="two">
       <div><canvas class="sq"></canvas></div>
       <div>
-        <div class="ctl"><label>s <input type="range" name="s" min="0.3" max="3" step="0.01" value="1.24"></label></div>
+        <div class="ctl"><label>s <input type="range" name="s" min="0.3" max="3" step="0.01" value="1.2"></label></div>
         <p class="readout"></p>
-        <p class="hint">拖动白色句柄。橙色圆 → 金色像;紫色直线 → 粉色像(一个穿过原点的圆)。蓝色虚线是反演球。背景暗蓝的弯曲网格是直角网格的反演像。试着把橙色圆拖到原点附近,看它被放得多大。</p>
+        <p class="hint">拖动白色句柄。橙色圆 → 金色像;紫色直线 → 粉色像。蓝色虚线是反演球。试试把橙色圆拖到原点附近,看它被放大多少。</p>
       </div>
     </div>
   </div>
 
-  <!-- 3 -->
-  <h2 id="iter">3 · 迭代:Apollonian 结构与距离估计</h2>
-  <p>把“折叠 + 反演”重复 16 次,就得到了 Apollonian 类型的分形(和 Apollonian 垫片、Kleinian 群同一家族:都是由反演生成的)。直觉上:折叠把空间排成一排排重复的“球孔”,反演又把每个孔内部的整个无穷格子塞进一个小球里,于是大球里套着无数小球,小球里再套更小的球。</p>
-  <p>那表面在哪?看函数最后一行:</p>
-  <pre>return FoldResult(abs(p.y) / scale, trap, detail);</pre>
-  <p>迭代结束时的点 <code>p</code> 处在“最深一层”的坐标系里,在那里我们只放了一个最简单的形状:平面 <code>y = 0</code>,它的距离就是 <code>|p.y|</code>。因为反演会把长度放大 <code>k</code> 倍,回到原始空间时要除以累计的 <code>scale</code>,这样得到的仍然是一个(保守的)距离估计。于是:<b>一个平面,经过所有层的折叠和反演之后,变成了一张布满圆孔的分形曲面</b>。</p>
-  <p>下面是这个距离场在 <code>z</code> 截面上的样子(橙 = 外部,蓝 = 内部,白线 = 表面,条纹是等距线)。把迭代次数从 0 拖到 16:0 次时就是一条直线 <code>y=0</code>,1 次后开始出现圆,之后每多一次,圆里就多一层圆。</p>
+  <h2 id="iter">3 · apollian:迭代与距离</h2>
+  <p>把“折叠 + 反演”重复 7 次(原作固定写死 7,这里可调),然后:</p>
+  <pre>return abs(p.y)/scale;</pre>
+  <p>迭代结束时的 <code>p</code> 处在最深一层的坐标系里,那里只放了一个最简单的形状:平面 <code>y = 0</code>,它的距离就是 <code>|p.y|</code>。每次反演都把长度放大 <code>k</code> 倍,回到原空间要除以累计的 <code>scale</code>,所以这是一个距离估计。<b>一个平面,经过逐层折叠 + 反演,就变成了布满圆的分形</b>。</p>
+  <p>因为是 <code>abs</code>,返回值<b>永远 ≥ 0</b>:没有“里面”,只有零集(曲线)本身。下图用等值线显示 d,白色是曲线。把迭代次数从 0 拖到 7:0 次是一条直线;每多一次,圆里就多一层圆。</p>
   <div class="demo" id="iter-demo">
     <div class="two">
-      <div><canvas class="sq"></canvas><p class="readout">在图上移动鼠标,查看这个点的迭代轨道。</p></div>
+      <div><div class="stack"><canvas class="gl sq"></canvas><canvas class="ov sq"></canvas></div><p class="readout">点一下图,查看这个点的迭代轨道。</p></div>
       <div>
         <div class="ctl"></div>
         <pre class="orbit"></pre>
-        <p class="hint">拖动平移,滚轮缩放(放大后能看到更多层)。右侧表格是当前点每一轮折叠后的坐标、r²、反演倍数 k 和累计 scale:离原点越近的轮次 k 越大,scale 增长到上千、上万倍,对应的就是越来越细的小球。</p>
+        <p class="hint">拖动平移,滚轮缩放(放大后能看到更多层,但超过 7 次后就没有更细的结构了)。右边是点击位置每一轮折叠后的 4D 坐标、r²、k 和累计 scale。</p>
       </div>
     </div>
   </div>
-  <p>原文件里还有一个 <code>apollian_dist()</code>:同样的循环,但只迭代 9 次、不算 trap 和 detail,专门用来估算法线(见第 7 节),省下一大半计算。</p>
 
-  <!-- 4 -->
-  <h2 id="twist">4 · 第四维:名字里的 “Twist”</h2>
-  <p>注意 <code>apollian()</code> 接收的是 <code>vec4</code>。在 <code>cluster()</code> 里,3D 点被抬到 4D:</p>
-  <pre>var pp = vec4&lt;f32&gt;(q + off, 0.0);
-pp.w = 0.055 * (1.0 - tanh_approx(0.82 * length(pp.xyz)));   // 中心鼓起的“第四维高度”
-pp.yz = rotate2(pp.yz, tm * 0.52 + 0.14 * phase);
-pp.xz = rotate2(pp.xz, tm * 0.35 - 0.10 * phase);
-pp.xw = rotate2(pp.xw, -tm * 0.46 + 0.38 * phase);              // 混入 w 的旋转
-pp.yw = rotate2(pp.yw,  tm * 0.64 - 0.22 * phase);</pre>
-  <p>分形本身是 4D 的,我们看到的是一个 3D 截面。<code>w</code> 不是常数,而是一个随半径衰减的“鼓包”:中心处 w≈0.055,边缘趋向 0。于是不同半径处其实在切 4D 分形的不同“高度”。再加上 <code>xw</code>、<code>yw</code> 平面上的旋转,这个截面会随时间在 4D 里转动,3D 里看到的形状就会扭曲、开合、流动,而不是简单地刚体旋转。这就是 “twist”。</p>
-  <p>下面先在 2D 截面上看:调 <code>w 平移</code> 和两个 4D 旋转角,圆的排布会连续变形。</p>
-  <div class="demo" id="twist-slice">
+  <h2 id="twist">4 · weird:第四维的 twist</h2>
+  <p><code>apollian()</code> 吃的是 <code>vec4</code>。屏幕只有 2D,<code>weird()</code> 要负责把 2D 点“编织”成一个 4D 点:</p>
+  <pre>vec4 off = vec4(r*PSIN(tm*sqrt(3.0)), r*PSIN(tm*sqrt(1.5)), r*PSIN(tm*sqrt(2.0)), 0.0);
+vec4 pp  = vec4(p.x, p.y, 0.0, 0.0) + off;     // z 分量由 off 提供
+pp.w = 0.125*(1.0 - tanh(length(pp.xyz)));      // 第四维 = 随半径衰减的“鼓包”
+pp.yz *= ROT(tm);                               // 3D 里的旋转
+pp.xz *= ROT(tm*sqrt(0.5));
+pp /= z;                                        // z = 4</pre>
+  <ul>
+    <li><b>off</b>:三个频率 √3、√1.5、√2 互不成有理比的正弦,让切面的位置永远不会精确重复地在 4D 里漂移(只改 xyz,不改 w)。</li>
+    <li><b>w 鼓包</b>:中心 w≈0.125,往外趋于 0。所以屏幕上不同半径处,切的是 4D 分形的不同“高度”。这是“twist”的一半。</li>
+    <li><b>两个旋转</b>:作用在 yz、xz 平面,把 z 方向(以及漂移)混进 xy,让切面在 4D 里缓慢转动。另一半 twist。</li>
+    <li>开头还有一行 <code>p *= ROT(TIME*0.1)</code>,让整幅图在屏幕上缓慢旋转。</li>
+  </ul>
+  <p>下面可以“冻结”动画,手动控制切面位置。把 w 鼓包设成 0、旋转关掉,就退化成普通的 3D Apollonian 的一个切片。</p>
+  <div class="demo" id="twist-demo">
     <div class="two">
-      <div><canvas class="sq"></canvas><p class="readout"></p></div>
-      <div><div class="ctl"></div><p class="hint">“鼓包幅度”设成 0 并把 4D 角度归零,就退化成普通的 3D Apollonian 截面。</p></div>
-    </div>
-  </div>
-  <p>再到 3D 里看。关掉动画后手动拖“额外 4D 扭转角”,可以清楚看到形状不是在转,而是在“变”。</p>
-  <div class="demo" id="twist-3d">
-    <span class="fps"></span>
-    <canvas class="wide"></canvas>
-    <div class="ctl"></div>
-  </div>
-
-  <!-- 5 -->
-  <h2 id="cluster">5 · 团簇、包围球与卫星</h2>
-  <p><b>包围球。</b>因为最深一层是一个无限大的平面,如果直接用,画面里会出现一张无限延伸的平板。原代码注释也说了这一点,解决办法是和一个球求交:</p>
-  <pre>return MapData(max(fractal, length(p) - radius), fold.trap, fold.detail);</pre>
-  <p><code>max(a, b)</code> 是距离场里的“交集”。下面把“包围球”关掉试试,就能看到那张平板(被 <code>scene_gate</code> 的半径 3 截断)。</p>
-  <p><b>卫星团簇。</b><code>map_scene()</code> 一共调用三次 <code>cluster()</code>:一个主团簇,两个缩小的副本。副本用的是标准的“局部坐标缩放”技巧:</p>
-  <pre>let sat1Local = (p - AP_SAT1_CENTER) / AP_SAT1_SCALE;     // 进入卫星的局部坐标
-var sat1 = cluster(sat1Local, time, 1.7, 0.0040, 0.92);
-sat1.dist = sat1.dist * AP_SAT1_SCALE;                     // 距离再乘回来</pre>
-  <p>每个卫星有不同的 <code>phase</code>(1.7 和 −2.0),所以动画节奏错开。为了省算力,只有当采样点离卫星够近(<code>sat1Gate &lt; AP_SAT1_EVAL_MARGIN</code>)时才去算它的分形,远处直接跳过。三者取 <code>min</code> 就是“并集”,同时把对应的 trap 和 detail 一起带出来,供着色使用。</p>
-  <p><b>运动。</b><code>cluster()</code> 开头的三个 <code>rotate2</code> 让团簇整体缓慢翻滚;<code>off</code> 用三个频率为 √3、√1.5、√2 的正弦让它在 4D 里漂移。频率两两不成有理比,所以运动永远不会精确重复。</p>
-  <div class="demo" id="cluster-3d">
-    <span class="fps"></span>
-    <canvas class="wide"></canvas>
-    <div class="ctl"></div>
-  </div>
-
-  <!-- 6 -->
-  <h2 id="march">6 · 光线步进</h2>
-  <p>有了距离场 <code>map_scene(p)</code>(“p 离最近表面至少有多远”),渲染就是 sphere tracing:沿光线每次前进这么远,一定不会穿过表面。离表面越近步子越小,直到距离小于阈值就算命中。</p>
-  <pre>let gate = scene_gate(samplePos);              // 离半径 3 的大球有多远
-if (gate &gt; AP_GATE_MARGIN) {                    // 还在大球外:不用算分形,直接大步走
-  t = t + clamp(gate * 0.76, 0.015, 0.22);
-  continue;
-}
-let hit = map_scene(samplePos, time);
-let precis = 0.00012 + 0.00009 * t;            // 越远的地方允许越粗的精度
-if (hit.dist &lt; precis) { return TraceResult(true, t, trap); }
-t = t + clamp(hit.dist * 0.82, 0.0015, 0.15);   // 乘 0.82 是“保守系数”</pre>
-  <p>分形的距离估计并不精确(<code>/scale</code> 只是近似),所以每步只走 82%,并限制最大步长 0.15,防止跨过细小的结构;最小步长 0.0015 防止在擦边处原地打转。下面在 2D 截面上演示,绿色圆就是每一步的“安全半径”。</p>
-  <div class="demo" id="march-demo">
-    <div class="two">
-      <div><canvas class="sq"></canvas></div>
+      <div><div class="stack"><canvas class="gl sq"></canvas></div></div>
       <div>
-        <div class="ctl"><label>步长系数 <input type="range" name="k" min="0.2" max="1.6" step="0.01" value="0.82"></label></div>
-        <p class="readout"></p>
-        <p class="hint">拖动白点(相机)和黄点(方向)。把步长系数调到 1 以上,可能会出现“穿模”:直接跳过薄片,命中了后面的东西。调小则更安全但步数暴增。在下面第 7 节的 3D 视窗里选“步进次数热图”,可以看到真实画面里每个像素用了多少步:物体轮廓附近的擦边光线最贵。</p>
+        <div class="ctl"></div>
+        <p class="hint">“手动偏移”打开后,off 不再随时间漂移,而是用滑块的值,可以逐个分量看它对形状的影响。w 鼓包幅度是原作的 0.125。</p>
       </div>
     </div>
   </div>
 
-  <!-- 7 -->
-  <h2 id="shade">7 · 法线与着色</h2>
-  <p><b>法线</b>用“四面体”有限差分:只采样 4 个点(而不是中心差分的 6 个),用的是更便宜的 <code>map_distance</code>(9 次迭代)。eps 随距离增大,远处的细节自然被平滑掉,减少噪点。</p>
-  <pre>let e = vec2(eps, -eps);
-normalize(e.xyy * map(pos + e.xyy) + e.yyx * map(pos + e.yyx)
-        + e.yxy * map(pos + e.yxy) + e.xxx * map(pos + e.xxx));</pre>
-  <p><b>轨道陷阱(orbit trap)。</b>迭代过程中记下 <code>trap = min(|x|, |y|, |z|, r²)</code>。其中 <code>r²</code> 的最小值说明这个点曾经多么接近某一层的反演中心,也就是它处在多深的“缝隙”里,被当成环境光遮蔽(AO)来用;<code>trap.x / trap.y</code> 很小时意味着点贴近某个坐标平面,用 <code>exp(-13·trap.x)</code> 做出金色的发光脉络。</p>
-  <p><b>detail</b> 综合了两件事:在第几轮迭代时离反演中心很近(越晚越大),以及累计缩放 <code>log2(scale)/22</code>。值越大表示越“精细”的结构。配色是三段式:<code>detail</code> 低 → 深绿,中 → 草绿,高 → 金色再到暖白;再叠加主光、补光、边缘光,最后乘一个距离雾 <code>exp(-0.055 t)</code> 并做对比度曲线和 <code>sqrt</code>(近似 gamma)。</p>
-  <p>切换下面的“视图”,逐个看着色用到的各项:</p>
-  <div class="demo" id="shade-3d">
+  <h2 id="zoom">5 · 两层缩放:z 与 zoom</h2>
+  <p>有两个容易混淆的缩放:</p>
+  <pre>float df(vec2 p) {
+  const float zoom = 0.5;
+  p /= zoom;                  // 把图放大 2 倍
+  return weird(p) * zoom;     // 距离也要按比例缩回来
+}
+...  pp /= z;  ...  return d*z;   // weird 内部:z = 4</pre>
+  <p><code>z</code> 决定从分形里取多大的一块(<code>z</code> 越大,取的区域越小,但又被反演放大,图案越稠密);<code>zoom</code> 只是 <code>df</code> 的外部缩放,乘回去保证距离值仍是长度。这个“先除再乘”的写法在整个着色器里反复出现:<b>坐标缩放必须伴随距离反向缩放</b>,否则光线/阴影的几何会错。</p>
+  <div class="demo" id="zoom-demo">
+    <div class="two">
+      <div><div class="stack"><canvas class="gl sq"></canvas></div></div>
+      <div><div class="ctl"></div></div>
+    </div>
+  </div>
+
+  <h2 id="light">6 · 地板与两盏灯</h2>
+  <p>只有曲线的话,画面是平的。作者加了一块“地板”,让曲线投下阴影,而且是<b>透过曲线平面看到的阴影</b>:</p>
+  <ol>
+    <li>相机在 <code>(0, 10, 0)</code>,俯视。屏幕点 <code>p</code> 对应曲线平面 <code>y=0</code> 上的 <code>pp = (p.x, 0, p.y)</code>。</li>
+    <li>这条射线继续往下,打到另一个平面 <code>y = b = -0.125</code>,得到地板上的点 <code>bp</code>。</li>
+    <li>从 <code>bp</code> 朝两盏灯(高度 1.25,位置 <code>(±0.5, 1.25, 0.5)</code>)各发一条射线,必然穿过 <code>y=0</code> 的曲线平面,交点是 <code>sp1</code>、<code>sp2</code>。</li>
+    <li>在这两个交点取 <code>df</code>:<code>sd ≈ 0</code> 说明光线正好穿过曲线(被挡住),<code>sd</code> 大说明穿过空隙(被照亮)。亮度 = <code>(1 − exp(−15·sd)) / 距离²</code>。</li>
+  </ol>
+  <p>所以地板上的光是“曲线图案”经过两次不同方向的投影,再叠起来的结果。因为相机几乎垂直向下,<code>bp</code> 和 <code>pp</code> 差别很小,而 <code>sp1</code>、<code>sp2</code> 会被灯的位置推开,阴影因此相对曲线本体产生视差错位,画面立刻有了“深度”。</p>
+  <div class="demo" id="light-demo">
+    <div class="two">
+      <div><div class="stack"><canvas class="gl sq"></canvas><canvas class="ov sq"></canvas></div></div>
+      <div>
+        <canvas class="side"></canvas>
+        <p class="readout"></p>
+        <div class="ctl"></div>
+        <p class="hint">左图是俯视的“只看地板上的光”,点击或拖动选择一个屏幕点:白点是 pp,青点是 bp,黄/粉点是两盏灯穿过曲线平面的位置 sp1/sp2。右上是按真实比例画的侧视图(x–y 投影)。把“地板深度”拉大,视差就非常明显。</p>
+        <p class="hint">彩蛋:原作算 <code>sp2</code> 时用了 <code>st1</code> 而不是 <code>st2</code>(应该是笔误)。勾上“修正 sp2”,第二盏灯的投影会和侧视图里画的射线严格对上,画面也会稍有不同;默认保持原作行为。</p>
+      </div>
+    </div>
+  </div>
+
+  <h2 id="color">7 · 配色、辉光与后处理</h2>
+  <pre>float l   = length(p);
+float hue = fract(0.75*l-0.3*TIME)+0.3+0.15;     // 按到原点的距离分色相,随时间向外流动
+float sat = 0.75*tanh(2.0*l);                    // 中心偏白,外围饱和
+col  *= (1.0-tanh(0.75*l))*0.5;                  // 地板光向外变暗
+col   = mix(col, bcol, smoothstep(-aa, aa, -d)); // d≈0 的地方盖上彩色曲线,aa 是一个像素宽
+col  += 0.5*sqrt(bcol.zxy)*exp(-(10.0+100.0*tanh(l))*max(d, 0.0));  // 曲线两侧的辉光</pre>
+  <p>辉光的衰减速度是 <code>10 + 100·tanh(l)</code>:中心衰减慢(光晕宽),越往外越窄、越锐利。色相用 <code>bcol.zxy</code>(把颜色通道换位)作辉光色,使辉光和线条本身略有色差。最后 <code>postProcess</code> 依次做 gamma 2.2、S 形对比度、负饱和度(<code>mix(.., -0.4)</code> 其实是拉高饱和)和暗角。</p>
+  <div class="demo" id="color-demo">
     <span class="fps"></span>
-    <canvas class="wide"></canvas>
+    <div class="stack"><canvas class="gl wide"></canvas></div>
     <div class="ctl"></div>
   </div>
 
-  <!-- 8 -->
-  <h2 id="table">8 · 参数速查</h2>
+  <h2 id="table">8 · 参数速查与源码</h2>
   <table>
-    <tr><th>常量 / 位置</th><th>值</th><th>作用</th></tr>
-    <tr><td><code>apollian(pp, s)</code></td><td>s = 1.24</td><td>反演强度(半径 √s)。越大孔越大、结构越稀疏;接近 1 时更密。</td></tr>
-    <tr><td><code>AP_APOLLIAN_ITERS</code></td><td>16</td><td>折叠 + 反演轮数,决定能看到多少层细节。</td></tr>
-    <tr><td><code>zoom</code></td><td>4.10</td><td>进入分形前把坐标缩小 4.1 倍,相当于从分形里截取中心一小块。</td></tr>
-    <tr><td><code>pp.w</code> 系数</td><td>0.055 / 0.82</td><td>第四维鼓包的高度和衰减速度。</td></tr>
-    <tr><td>thickness</td><td>0.0048 / 0.0040 / 0.0038</td><td>从距离里减去,把零厚度的曲面加厚成薄壳。</td></tr>
-    <tr><td>radius</td><td>1.08 / 0.92 / 0.88</td><td>各团簇包围球半径,裁掉无限平面。</td></tr>
-    <tr><td><code>AP_SAT1/2_CENTER, SCALE</code></td><td>(1.05,0.28,−0.22)×0.34;(−0.90,−0.42,0.30)×0.29</td><td>两个卫星的位置和大小。</td></tr>
-    <tr><td><code>AP_MAX_TRACE_STEPS</code></td><td>160</td><td>每条光线最多步数。</td></tr>
-    <tr><td><code>AP_MAX_DISTANCE</code></td><td>14</td><td>最远行进距离。</td></tr>
-    <tr><td><code>scene_gate</code> / <code>AP_GATE_MARGIN</code></td><td>半径 3 / 0.36</td><td>大包围球:球外只做廉价的大步前进。</td></tr>
-    <tr><td>步长</td><td>clamp(d·0.82, 0.0015, 0.15)</td><td>保守步进,防穿模。</td></tr>
-    <tr><td><code>2.35 * forward</code></td><td>焦距</td><td>视角约 24°,较长焦,压缩透视感。</td></tr>
+    <tr><th>位置</th><th>值</th><th>作用</th></tr>
+    <tr><td><code>apollian</code> 循环</td><td>7</td><td>折叠 + 反演轮数,决定圆的嵌套层数。</td></tr>
+    <tr><td><code>apollian(pp, s)</code></td><td>s = 1.2</td><td>反演强度(半径 √s)。</td></tr>
+    <tr><td><code>weird</code> 的 z</td><td>4.0</td><td>进入分形前把 4D 点缩小,相当于只取中心一小块。</td></tr>
+    <tr><td><code>df</code> 的 zoom</td><td>0.5</td><td>整体放大 2 倍;距离乘回去。</td></tr>
+    <tr><td><code>r</code></td><td>0.5</td><td>off 的漂移幅度。</td></tr>
+    <tr><td><code>pp.w</code></td><td>0.125·(1−tanh|xyz|)</td><td>第四维鼓包。</td></tr>
+    <tr><td>旋转</td><td>ROT(tm), ROT(tm·√0.5), tm = 0.2·TIME</td><td>切面在 4D 里转动。</td></tr>
+    <tr><td><code>p *= ROT(TIME*0.1)</code></td><td>0.1 rad/s</td><td>屏幕上的整体自转。</td></tr>
+    <tr><td>相机 t / 地板 b</td><td>10 / −0.125</td><td>几乎垂直的俯视,地板在曲线平面下方 0.125。</td></tr>
+    <tr><td>灯 lp1 / lp2</td><td>(±0.5, 1.25, 0.5)</td><td>两盏灯,强度 1 和 0.5。</td></tr>
+    <tr><td><code>ss</code></td><td>15</td><td>光线穿过空隙时亮度饱和的速度。</td></tr>
   </table>
-
   <details>
-    <summary>完整原始着色器源码(apollonian-twist.wgsl)</summary>
-    <pre id="source"></pre>
+    <summary>原始 GLSL(Shadertoy Wl3fzM,CC0)</summary>
+    <pre id="source-glsl"></pre>
   </details>
-  <p>想全屏玩所有参数:<a href="./play.html">全屏玩法 →</a></p>
+  <details>
+    <summary>本页使用的 WGSL 移植</summary>
+    <pre id="source-wgsl"></pre>
+  </details>
+  <p>想全屏玩:<a href="./play.html">全屏玩法 →</a></p>
 </main>
 <script type="module">import { nav } from '/src/gpu.js'; nav('index.html')</script>
 <script type="module" src="/src/main.js"></script>

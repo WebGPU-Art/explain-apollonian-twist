@@ -1,50 +1,77 @@
-// JS 版的 apollian():用于逐步打印轨道、以及 2D 光线步进演示
+// JS 版的 apollian() / weird() / color() 几何部分:用于逐轮打印轨道,以及在俯视图上标出光线采样点
 export function fold1(x) {
-  // -1 + 2*fract(0.5*x + 0.5)
   const t = 0.5 * x + 0.5
   return -1 + 2 * (t - Math.floor(t))
 }
 
-export function tanhApprox(x) {
-  const x2 = x * x
-  return Math.max(-1, Math.min(1, (x * (27 + x2)) / (27 + 9 * x2)))
-}
-
-export function rot(a, b, ang) {
+export const rot = (a, b, ang) => {
   const c = Math.cos(ang), s = Math.sin(ang)
   return [c * a + s * b, -s * a + c * b]
 }
-
-// 从 cluster 局部坐标 (x,y,z) 构造 4D 点,和着色器里 warp() 的静态部分一致
-export function lift4(x, y, z, o) {
-  const len = Math.hypot(x, y, z)
-  let p = [x, y, z, (o.sliceW || 0) + o.wAmp * (1 - tanhApprox(0.82 * len))]
-  ;[p[0], p[3]] = rot(p[0], p[3], o.rotXW || 0)
-  ;[p[1], p[3]] = rot(p[1], p[3], o.rotYW || 0)
-  return p.map((v) => v / o.zoom)
-}
+const psin = (x) => 0.5 + 0.5 * Math.sin(x)
 
 export function apollian(p0, s, n, log) {
   let p = p0.slice()
   let scale = 1
-  let trap = Infinity
   for (let i = 0; i < n; i++) {
-    const before = p.slice()
     p = p.map(fold1)
-    const r2 = Math.max(p[0] * p[0] + p[1] * p[1] + p[2] * p[2] + p[3] * p[3], 1e-5)
-    trap = Math.min(trap, r2)
+    const r2 = Math.max(p[0] * p[0] + p[1] * p[1] + p[2] * p[2] + p[3] * p[3], 1e-9)
     const k = s / r2
+    const folded = p.slice()
     p = p.map((v) => v * k)
     scale *= k
-    log?.push({ i, before, folded: p.map((v) => v / k), r2, k, scale })
+    log?.push({ i, folded, r2, k, scale })
   }
-  return { dist: Math.abs(p[1]) / scale, trap, scale, p }
+  return { dist: Math.abs(p[1]) / scale, scale, p }
 }
 
-// 2D 切片上的距离场(cluster 的一部分,不含动画)
-export function sliceDE(x, y, o) {
-  const p4 = lift4(x, y, o.sliceZ || 0, o)
-  let d = apollian(p4, o.s, o.iters).dist * o.zoom - (o.thick || 0)
-  if (o.bound) d = Math.max(d, Math.hypot(x, y, o.sliceZ || 0) - 1.08)
-  return d
+// 把 2D 点抬到 4D(weird() 的前半段)
+export function lift(p0, P, time) {
+  let [x, y] = P.spin ? rot(p0[0], p0[1], time * 0.1) : p0
+  const tm = 0.2 * time
+  const r = P.offR
+  const off = P.manual > 0.5 ? [P.ox, P.oy, P.oz] : [r * psin(tm * Math.sqrt(3)), r * psin(tm * Math.sqrt(1.5)), r * psin(tm * Math.sqrt(2))]
+  let pp = [x + off[0], y + off[1], off[2], 0]
+  pp[3] = P.wAmp * (1 - Math.tanh(P.tanhK * Math.hypot(pp[0], pp[1], pp[2])))
+  if (P.rot4d) {
+    ;[pp[1], pp[2]] = rot(pp[1], pp[2], tm)
+    ;[pp[0], pp[2]] = rot(pp[0], pp[2], tm * Math.sqrt(0.5))
+  }
+  return pp.map((v) => v / P.z)
+}
+
+export function weird(p0, P, time, log) {
+  const r = apollian(lift(p0, P, time), P.s, P.iters, log)
+  return r.dist * P.z
+}
+
+export function df(p, P, time) {
+  return weird([p[0] / P.zoom, p[1] / P.zoom], P, time) * P.zoom
+}
+
+const sub = (a, b) => a.map((v, i) => v - b[i])
+const add = (a, b) => a.map((v, i) => v + b[i])
+const mul = (a, k) => a.map((v) => v * k)
+const len = (a) => Math.hypot(...a)
+const nrm = (a) => mul(a, 1 / len(a))
+
+// color() 里的几何部分:相机射线 → 地板 → 两盏灯 → 回到曲线平面
+export function lightGeom(p, P, time) {
+  const lh = P.lightH, t = P.camT, b = P.floorB
+  const lp1 = [0.5, lh, 0.5], lp2 = [-0.5, lh, 0.5]
+  const ro = [0, t, 0]
+  const pp = [p[0], 0, p[1]]
+  const rd = nrm(sub(pp, ro))
+  const bt = -(t - b) / rd[1]
+  const bp = add(ro, mul(rd, bt))
+  const s1 = nrm(sub(lp1, bp)), s2 = nrm(sub(lp2, bp))
+  const st1 = (0 - b) / s1[1], st2 = (0 - b) / s2[1]
+  const sp1 = add(bp, mul(s1, st1))
+  const sp2 = add(bp, mul(s2, P.bugFix ? st2 : st1))
+  const sp2True = add(bp, mul(s2, st2))
+  const bl21 = len(sub(lp1, bp)) ** 2, bl22 = len(sub(lp2, bp)) ** 2
+  const sd1 = df([sp1[0], sp1[2]], P, time), sd2 = df([sp2[0], sp2[2]], P, time)
+  const c1 = (1 - Math.exp(-P.ss * Math.max(sd1, 0))) / bl21
+  const c2 = (0.5 * (1 - Math.exp(-P.ss * Math.max(sd2, 0)))) / bl22
+  return { lp1, lp2, ro, pp, bp, sp1, sp2, sp2True, sd1, sd2, c1, c2, bl21, bl22 }
 }

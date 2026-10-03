@@ -1,5 +1,5 @@
 // 纯 Canvas2D 的小演示:折叠、反演、2D 光线步进
-import { fold1, sliceDE } from './math.js'
+import { fold1 } from './math.js'
 
 function setup(canvas, range) {
   const ctx = canvas.getContext('2d')
@@ -229,77 +229,34 @@ export function mountInversion(root) {
   draw()
 }
 
-// ⑥ 2D 光线步进:每一步都走“到表面的安全距离”
-export function mountMarch(root) {
-  const canvas = root.querySelector('canvas')
-  const out = root.querySelector('.readout')
-  const kInput = root.querySelector('input[name=k]')
-  const S = setup(canvas, 1.5)
-  const pts = [[-1.4, 1.25], [0.15, 0.1]]
-  const o = { s: 1.24, iters: 10, zoom: 4.1, wAmp: 0.055, sliceZ: 0.0, thick: 0.004, bound: 1 }
-  // 预先算一张低分辨率的距离场底图
-  const N = 220
-  const img = document.createElement('canvas')
-  img.width = N
-  img.height = N
-  {
-    const g = img.getContext('2d')
-    const data = g.createImageData(N, N)
-    for (let j = 0; j < N; j++) {
-      for (let i = 0; i < N; i++) {
-        const x = ((i + 0.5) / N - 0.5) * 3
-        const y = (0.5 - (j + 0.5) / N) * 3
-        const d = sliceDE(x, y, o)
-        let c = d > 0 ? [235, 150, 80] : [160, 210, 255]
-        const f = (1 - Math.exp(-14 * Math.abs(d))) * (0.8 + 0.2 * Math.cos((6.283 * d) / 0.04))
-        const edge = Math.abs(d) < 0.0025 ? 1 : 0
-        const k = (i + j * N) * 4
-        data.data[k] = edge ? 255 : c[0] * f * 0.55
-        data.data[k + 1] = edge ? 255 : c[1] * f * 0.55
-        data.data[k + 2] = edge ? 255 : c[2] * f * 0.55
-        data.data[k + 3] = 255
-      }
-    }
-    g.putImageData(data, 0, 0)
+// 侧视图:把 color() 里的 3D 光路投影到 x–y 平面(按真实比例)
+export function drawSide(ctx, g, P, w, h, dpr) {
+  const X0 = -1.7, X1 = 1.7, Y0 = -0.45, Y1 = 1.7
+  const X = (x) => ((x - X0) / (X1 - X0)) * w
+  const Y = (y) => (1 - (y - Y0) / (Y1 - Y0)) * h
+  ctx.fillStyle = '#05060a'
+  ctx.fillRect(0, 0, w, h)
+  const line = (x0, y0, x1, y1, c, lw = 1.2, dash) => {
+    ctx.strokeStyle = c; ctx.lineWidth = lw * dpr; ctx.setLineDash(dash ? dash.map((v) => v * dpr) : [])
+    ctx.beginPath(); ctx.moveTo(X(x0), Y(y0)); ctx.lineTo(X(x1), Y(y1)); ctx.stroke(); ctx.setLineDash([])
   }
-  const draw = () => {
-    S.resize()
-    const { ctx } = S
-    const dpr = canvas.width / canvas.clientWidth
-    const K = Number(kInput.value)
-    ctx.fillStyle = '#05060a'
-    ctx.fillRect(0, 0, canvas.width, canvas.height)
-    ctx.imageSmoothingEnabled = true
-    ctx.drawImage(img, S.X(-1.5), S.Y(1.5), S.L(3), S.L(3))
-    const [ro, tgt] = pts
-    let rd = [tgt[0] - ro[0], tgt[1] - ro[1]]
-    const l = Math.hypot(...rd)
-    rd = [rd[0] / l, rd[1] / l]
-    let t = 0
-    let hit = false
-    let steps = 0
-    ctx.lineWidth = 1 * dpr
-    for (; steps < 160; steps++) {
-      const p = [ro[0] + rd[0] * t, ro[1] + rd[1] * t]
-      const d = sliceDE(p[0], p[1], o)
-      ctx.strokeStyle = '#6ef0c088'
-      ctx.beginPath()
-      ctx.arc(S.X(p[0]), S.Y(p[1]), S.L(Math.abs(d)), 0, Math.PI * 2)
-      ctx.stroke()
-      dot(ctx, S.X(p[0]), S.Y(p[1]), 2.5 * dpr, '#6ef0c0')
-      if (d < 0.00012 + 0.00009 * t) { hit = true; break }
-      t += Math.min(0.15, Math.max(0.0015, d * K))
-      if (t > 4) break
-    }
-    const end = [ro[0] + rd[0] * t, ro[1] + rd[1] * t]
-    arrow(ctx, S.X(ro[0]), S.Y(ro[1]), S.X(end[0]), S.Y(end[1]), '#ffffffaa', 1.5 * dpr)
-    if (hit) dot(ctx, S.X(end[0]), S.Y(end[1]), 6 * dpr, '#ff6b8b')
-    dot(ctx, S.X(ro[0]), S.Y(ro[1]), 7 * dpr, '#ffffff')
-    dot(ctx, S.X(tgt[0]), S.Y(tgt[1]), 5 * dpr, '#ffd27a')
-    out.innerHTML = `${hit ? '命中' : '未命中'} · 用了 <b>${steps + 1}</b> 步 · 行进距离 t = ${t.toFixed(3)}(白点是相机,黄点控制方向)`
-  }
-  handles(canvas, S, pts, draw)
-  kInput.oninput = draw
-  window.addEventListener('resize', draw)
-  draw()
+  const pt = (x, y, c, r = 5) => { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(X(x), Y(y), r * dpr, 0, 7); ctx.fill() }
+  const txt = (t, x, y, c = '#8e9a92') => { ctx.fillStyle = c; ctx.font = `${11 * dpr}px sans-serif`; ctx.fillText(t, X(x), Y(y)) }
+  line(X0, 0, X1, 0, '#9fd36a', 2.5)
+  line(X0, P.floorB, X1, P.floorB, '#5a6a8a', 2)
+  txt('y = 0  曲线所在的平面 df()', X0 + 0.05, 0.07, '#9fd36a')
+  txt(`y = ${P.floorB.toFixed(3)}  “地板”`, X0 + 0.05, P.floorB - 0.07, '#8aa0d0')
+  // 相机射线(几乎垂直向下)
+  line(g.pp[0] * (P.camT - 1.7) / P.camT, 1.7, g.pp[0], 0, '#ffffff66', 1.2, [4, 4])
+  line(g.pp[0], 0, g.bp[0], P.floorB, '#ffffffaa', 1.5)
+  // 两条朝灯的“阴影射线”
+  line(g.bp[0], P.floorB, g.lp1[0], g.lp1[1], '#ffe9a066', 1.2)
+  line(g.bp[0], P.floorB, g.lp2[0], g.lp2[1], '#ff9ad066', 1.2)
+  pt(g.lp1[0], g.lp1[1], '#ffe9a0', 6); txt('灯1', g.lp1[0] + 0.05, g.lp1[1] + 0.04)
+  pt(g.lp2[0], g.lp2[1], '#ff9ad0', 6); txt('灯2', g.lp2[0] + 0.05, g.lp2[1] + 0.04)
+  pt(g.pp[0], 0, '#ffffff', 5)
+  pt(g.bp[0], P.floorB, '#6ef0c0', 5); txt('bp', g.bp[0] + 0.04, P.floorB - 0.06, '#6ef0c0')
+  pt(g.sp1[0], 0, '#ffe9a0', 5); txt('sp1', g.sp1[0] + 0.03, 0.12, '#ffe9a0')
+  pt(g.sp2[0], 0, '#ff9ad0', 5); txt('sp2', g.sp2[0] + 0.03, -0.1, '#ff9ad0')
+  txt('相机在正上方 y = ' + P.camT + ' ↑', -0.3, 1.62)
 }

@@ -36,3 +36,8 @@ details{margin:12px 0}summary{cursor:pointer;color:var(--acc)}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;overflow:auto;font-size:13.5px}
 .panel .ctl{flex-direction:column;align-items:stretch}.panel .ctl label{justify-content:space-between}.panel .ctl input[type=range]{flex:1}
 @media(max-width:800px){.two{grid-template-columns:1fr}.toc{columns:1}.play{grid-template-columns:1fr;height:auto}.play .stage{height:70vh}h1{font-size:26px}}
+.stack{position:relative}
+.demo .stack canvas.ov{position:absolute;inset:0;height:100%;background:transparent;border:0;pointer-events:none}
+.demo canvas.side{aspect-ratio:16/10}
+.ctl output{min-width:48px}
+.play .stage .ov{display:none}
