@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Apollonian Twist 3D · 全屏玩法</title><link rel="stylesheet" href="/src/style.css"></head>
+<body>
+<div class="play" id="play">
+  <div class="stage"><canvas></canvas></div>
+  <div class="panel">
+    <h3 style="margin-top:0">全屏玩法 <span class="fps"></span></h3>
+    <p class="hint" style="color:var(--dim)">拖动旋转,滚轮缩放。所有参数含义见 <a href="./twist3d.html">讲解页</a>。</p>
+    <div class="ctl"></div>
+    <p><button id="reset">恢复默认</button></p>
+  </div>
+</div>
+<script type="module">import { nav } from '/src/gpu.js'; nav('twist3d-play.html')</script>
+<script type="module" src="/src/twist3d/play.js"></script>
+</body></html>

@@ -41,3 +41,6 @@ details{margin:12px 0}summary{cursor:pointer;color:var(--acc)}
 .demo canvas.side{aspect-ratio:16/10}
 .ctl output{min-width:48px}
 .play .stage .ov{display:none}
+.stepper{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.stepper button{min-width:34px}.stepper button.on{background:var(--acc);color:#0a0d08;border-color:var(--acc);font-weight:600}
+.st-text{min-height:7em}

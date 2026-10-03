@@ -14,13 +14,14 @@ export function apollian(p0, s, n, log) {
   let p = p0.slice()
   let scale = 1
   for (let i = 0; i < n; i++) {
+    const before = p.slice()
     p = p.map(fold1)
     const r2 = Math.max(p[0] * p[0] + p[1] * p[1] + p[2] * p[2] + p[3] * p[3], 1e-9)
     const k = s / r2
     const folded = p.slice()
     p = p.map((v) => v * k)
     scale *= k
-    log?.push({ i, folded, r2, k, scale })
+    log?.push({ i, before, folded, r2, k, scale, after: p.slice(), d: Math.abs(p[1]) / scale })
   }
   return { dist: Math.abs(p[1]) / scale, scale, p }
 }
@@ -74,4 +75,28 @@ export function lightGeom(p, P, time) {
   const c1 = (1 - Math.exp(-P.ss * Math.max(sd1, 0))) / bl21
   const c2 = (0.5 * (1 - Math.exp(-P.ss * Math.max(sd2, 0)))) / bl22
   return { lp1, lp2, ro, pp, bp, sp1, sp2, sp2True, sd1, sd2, c1, c2, bl21, bl22 }
+}
+
+// weird() 前半段的逐步分解:每一步之后的 4D 坐标
+export function liftSteps(p0, P, time) {
+  const steps = []
+  const tm = 0.2 * time
+  let [x, y] = P.spin ? rot(p0[0], p0[1], time * 0.1) : p0
+  if (P.spin) steps.push(['p *= ROT(TIME·0.1)', [x, y, 0, 0]])
+  else steps.push(['p(未自转)', [x, y, 0, 0]])
+  const r = P.offR
+  const off = P.manual > 0.5 ? [P.ox, P.oy, P.oz] : [r * psin(tm * Math.sqrt(3)), r * psin(tm * Math.sqrt(1.5)), r * psin(tm * Math.sqrt(2))]
+  let pp = [x + off[0], y + off[1], off[2], 0]
+  steps.push([`+ off = (${off.map((v) => v.toFixed(3)).join(', ')}, 0)`, pp.slice()])
+  pp[3] = P.wAmp * (1 - Math.tanh(P.tanhK * Math.hypot(pp[0], pp[1], pp[2])))
+  steps.push([`w = ${P.wAmp}·(1 − tanh|xyz|)`, pp.slice()])
+  if (P.rot4d) {
+    ;[pp[1], pp[2]] = rot(pp[1], pp[2], tm)
+    steps.push([`yz 旋转 tm = ${tm.toFixed(3)}`, pp.slice()])
+    ;[pp[0], pp[2]] = rot(pp[0], pp[2], tm * Math.sqrt(0.5))
+    steps.push([`xz 旋转 tm·√0.5 = ${(tm * Math.sqrt(0.5)).toFixed(3)}`, pp.slice()])
+  }
+  pp = pp.map((v) => v / P.z)
+  steps.push([`/ z (${P.z})`, pp.slice()])
+  return steps
 }

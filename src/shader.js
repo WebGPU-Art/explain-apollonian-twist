@@ -131,6 +131,22 @@ fn post(c0: vec3f, q: vec2f) -> vec3f {
     col = mix(vec3f(1.0), col, smoothstep(0.0, 1.5 * aa, d));
     return vec4f(col, 1.0);
   }
+  let l0 = length(p);
+  let bc0 = hsv2rgb(vec3f(fract(0.75 * l0 - 0.3 * u.a.z) + 0.45, 0.75 * tanh(2.0 * l0), 1.0));
+  let wline = smoothstep(-aa, aa, -P.d);
+  if (mode == 5) {
+    // 第 1 步:屏幕坐标 p。网格线间隔 0.25,红/绿线是 x/y 轴,底色按到原点的距离变色
+    let f = abs(fract(p * 4.0 + 0.5) - 0.5) / 4.0;
+    let grid = 1.0 - smoothstep(0.0, 1.5 * aa, min(f.x, f.y));
+    var c5 = bc0 * 0.22 + vec3f(0.35, 0.42, 0.55) * grid;
+    c5 = mix(c5, vec3f(1.0, 0.35, 0.35), 1.0 - smoothstep(0.0, 1.5 * aa, abs(p.y)));
+    c5 = mix(c5, vec3f(0.35, 1.0, 0.45), 1.0 - smoothstep(0.0, 1.5 * aa, abs(p.x)));
+    return vec4f(c5, 1.0);
+  }
+  if (mode == 6) { return vec4f(vec3f(wline), 1.0); }
+  if (mode == 7) { return vec4f(bc0 * wline, 1.0); }
+  if (mode == 8) { return vec4f(clamp(P.curve, vec3f(0.0), vec3f(1.0)), 1.0); }
+  if (mode == 9) { return vec4f(clamp(P.floor_, vec3f(0.0), vec3f(1.0)), 1.0); }
   if (mode == 3) { col = P.floor_; }
   else if (mode == 4) { col = P.curve; }
   else {
@@ -161,6 +177,18 @@ export const MODES = [
   [2, '距离场 d 的等值线'],
   [3, '只看地板上的光'],
   [4, '只看曲线与辉光'],
+]
+
+// 逐步搭建画面的 8 个阶段(讲解页的“分步”演示)
+export const STAGES = [
+  { mode: 5, title: '① 屏幕坐标 p', text: '一切从像素坐标开始:p = −1 + 2·fragCoord/res,x 再乘宽高比。网格线间隔 0.25,红线是 y=0,绿线是 x=0。后面所有函数都只吃这个 p。' },
+  { mode: 2, title: '② 距离 d = df(p)', text: 'df(p) 对每个 p 返回一个标量 d ≥ 0。这里用等值线显示:白线是 d = 0 的位置,颜色越亮离白线越近。画面的“形状”全部藏在这个标量场里。' },
+  { mode: 6, title: '③ 取 d≈0 当作曲线', text: 'smoothstep(−aa, aa, −d):d 小于一个像素时是 1,否则是 0。aa = 2/res.y 是一个像素的宽度,所以边缘只有 1 像素的抗锯齿。' },
+  { mode: 7, title: '④ 按半径上色', text: 'hue = fract(0.75·|p| − 0.3·TIME) + 0.45,色相随离原点的距离变化,并随时间向外流动;sat = 0.75·tanh(2|p|),中心偏白。' },
+  { mode: 8, title: '⑤ 加上辉光', text: '在曲线两侧叠加 0.5·sqrt(bcol.zxy)·exp(−(10+100·tanh|p|)·d)。通道换位(zxy)让辉光和线条有色差;衰减率随半径增大,中心光晕宽、外围锐利。' },
+  { mode: 9, title: '⑥ 另一半:地板上的光', text: '同一个 df 还被拿去算两盏灯照到地板上的光(见第 6 节)。这里单独显示它:曲线图案经过两次不同方向的投影后叠加,再除以到灯的距离平方,并向外变暗。' },
+  { mode: 1, title: '⑦ 合成', text: 'col = mix(地板光, 彩色曲线, 曲线mask),再加辉光。曲线盖在地板光上面,地板光只在曲线以外的区域可见。此时还是线性颜色。' },
+  { mode: 0, title: '⑧ 后处理', text: 'gamma 2.2 → S 形对比度 → 提高饱和度 → 暗角(四边变暗)。这就是最终看到的画面。' },
 ]
 
 export function packUniforms(u, p, w, h) {

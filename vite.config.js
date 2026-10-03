@@ -1,8 +1,8 @@
 import { defineConfig } from 'vite'
 import { resolve } from 'path'
 
-// 两个页面:讲解长文 + 全屏玩法
-const pages = ['index', 'play']
+// 页面:2D 原作的讲解 + 全屏玩法,以及 soluble 3D 版的讲解 + 全屏玩法
+const pages = ['index', 'play', 'twist3d', 'twist3d-play']
 
 export default defineConfig({
   // CI 里设置 VITE_BASE_URL=https://cos-sh.tiye.me/<owner>/<repo>/ ,让 js/css 走 CDN;

@@ -128,7 +128,7 @@ export function buildControls(host, params, defs, onChange) {
 }
 
 export function nav(active) {
-  const items = [['index.html', '讲解'], ['play.html', '全屏玩法']]
+  const items = [['index.html', '讲解'], ['play.html', '全屏玩法'], ['twist3d.html', '3D 版讲解'], ['twist3d-play.html', '3D 版玩法']]
   const el = document.createElement('nav')
   el.className = 'top'
   el.innerHTML = '<b>Apollonian Twist</b>' + items.map(([h, t]) => `<a href="./${h}" class="${h === active ? 'on' : ''}">${t}</a>`).join('') +

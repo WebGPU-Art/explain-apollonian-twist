@@ -32,6 +32,7 @@
     <span><b>postProcess</b><br>gamma / 对比度 / 暗角</span>
   </div>
   <ol class="toc">
+    <li><a href="#build">一步步搭出画面(8 步)</a></li>
     <li><a href="#fold">折叠</a></li>
     <li><a href="#inv">球反演</a></li>
     <li><a href="#iter">apollian:迭代与距离</a></li>
@@ -41,6 +42,22 @@
     <li><a href="#color">配色、辉光与后处理</a></li>
     <li><a href="#table">参数速查与源码</a></li>
   </ol>
+
+  <h2 id="build">★ 一步步搭出画面</h2>
+  <p>先不管内部怎么算,看最终画面是怎么一层层叠出来的。点下面的按钮(或用“上一步 / 下一步”)逐步显示;每一步只增加一件事,右边是这一步对应的代码含义。</p>
+  <div class="demo" id="build-demo">
+    <div class="stepper"></div>
+    <div class="two">
+      <div><div class="stack"><canvas class="gl sq"></canvas></div></div>
+      <div>
+        <h3 class="st-title" style="margin-top:0"></h3>
+        <p class="st-text"></p>
+        <p class="st-nav"><button class="prev">← 上一步</button> <button class="next">下一步 →</button> <button class="playstep">自动播放</button></p>
+        <div class="ctl"></div>
+      </div>
+    </div>
+  </div>
+  <p>后面的 1–7 节,就是把这 8 步里的黑盒——尤其是第 ② 步 <code>df(p)</code> 和第 ⑥ 步地板上的光——一个个打开。</p>
 
   <h2 id="fold">1 · 折叠</h2>
   <p><code>apollian()</code> 每一轮的第一行:</p>
@@ -85,10 +102,12 @@ scale   *= k;         // 记录累计的放大倍数</pre>
       <div>
         <div class="ctl"></div>
         <pre class="orbit"></pre>
-        <p class="hint">拖动平移,滚轮缩放(放大后能看到更多层,但超过 7 次后就没有更细的结构了)。右边是点击位置每一轮折叠后的 4D 坐标、r²、k 和累计 scale。</p>
+        <p class="hint">拖动平移,滚轮缩放。点击图上一点,右边列出这一点每一轮的全过程:<b>折叠前 → 折叠后 → r² → k=s/r² → 反演后 → 累计 scale → 此时的距离估计 d<sub>i</sub> = |p.y| / scale</b>。把迭代次数拖到不同值,看 d<sub>i</sub> 怎么逼近真实距离。</p>
       </div>
     </div>
   </div>
+
+  <p><b>怎么读这张表</b>:选一个靠近曲线的点,看 d<sub>i</sub> 一栏——每多迭代一轮,d<sub>i</sub> 往往变得更小、更准(因为 scale 越来越大,同样的 |p.y| 对应的真实长度就更小)。选一个远离曲线的点,d<sub>i</sub> 则几乎不变。r² 一栏很小的那些行(k 很大)就是“钻进了小圆里”的那几轮。</p>
 
   <h2 id="twist">4 · weird:第四维的 twist</h2>
   <p><code>apollian()</code> 吃的是 <code>vec4</code>。屏幕只有 2D,<code>weird()</code> 要负责把 2D 点“编织”成一个 4D 点:</p>
@@ -107,8 +126,9 @@ pp /= z;                                        // z = 4</pre>
   <p>下面可以“冻结”动画,手动控制切面位置。把 w 鼓包设成 0、旋转关掉,就退化成普通的 3D Apollonian 的一个切片。</p>
   <div class="demo" id="twist-demo">
     <div class="two">
-      <div><div class="stack"><canvas class="gl sq"></canvas></div></div>
+      <div><div class="stack"><canvas class="gl sq"></canvas><canvas class="ov sq"></canvas></div><p class="readout">点击画面取一个点,右边显示它被一步步“编织”成 4D 点的过程。</p></div>
       <div>
+        <pre class="lift" style="min-height:8em">点击左图取点</pre>
         <div class="ctl"></div>
         <p class="hint">“手动偏移”打开后,off 不再随时间漂移,而是用滑块的值,可以逐个分量看它对形状的影响。w 鼓包幅度是原作的 0.125。</p>
       </div>
