@@ -1,6 +1,6 @@
 # Explain Apollonian Twist
 
-交互式讲解 [soluble](https://github.com/Triadica/soluble) 里的 `apollonian-twist.wgsl` 着色器:折叠、球反演、Apollonian 距离估计、第四维扭转、包围球与卫星团簇、光线步进、法线与着色。
+交互式讲解 [soluble](https://github.com/WebGPU-Art/soluble) 里的 `apollonian-twist.wgsl` 着色器:折叠、球反演、Apollonian 距离估计、第四维扭转、包围球与卫星团簇、光线步进、法线与着色。
 
 - `index.html`:分节讲解,每节带可交互的 WebGPU / Canvas 演示
 - `play.html`:全屏 3D,所有参数可调
