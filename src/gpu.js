@@ -135,3 +135,57 @@ export function nav(active) {
     '<span class="sp"></span><a href="https://github.com/WebGPU-Art/explain-apollonian-twist" target="_blank" rel="noopener">GitHub</a>'
   document.body.prepend(el)
 }
+
+// 每个 demo 右上角的小工具栏(暂停、全屏等按钮都放这里)
+export function getToolbar(root) {
+  const host = root.querySelector('.stack') || root.querySelector('canvas')?.parentElement || root
+  if (getComputedStyle(host).position === 'static') host.style.position = 'relative'
+  let bar = host.querySelector(':scope > .tools')
+  if (!bar) {
+    bar = document.createElement('div')
+    bar.className = 'tools'
+    host.append(bar)
+  }
+  return bar
+}
+
+// 给 root 加一个“全屏”按钮:把整个 demo(画面 + 控件 + 说明)一起全屏
+export function addFullscreen(root) {
+  const req = root.requestFullscreen || root.webkitRequestFullscreen
+  const btn = document.createElement('button')
+  btn.type = 'button'
+  btn.className = 'fsbtn'
+  const cur = () => document.fullscreenElement || document.webkitFullscreenElement
+  const isFull = () => cur() === root || root.classList.contains('fs-fake')
+  const sync = () => { btn.textContent = isFull() ? '✕ 退出全屏' : '⛶ 全屏' }
+  const notify = () => {
+    sync()
+    // 全屏切换后画布尺寸变了,通知各 demo 重画
+    requestAnimationFrame(() => window.dispatchEvent(new Event('resize')))
+  }
+  // 浏览器不支持 / 拒绝 Fullscreen API(例如 iOS Safari、内嵌面板)时,退化成铺满视口的固定层
+  const fake = (on) => {
+    root.classList.toggle('fs-fake', on)
+    document.documentElement.classList.toggle('fs-lock', document.querySelector('.fs-fake') !== null)
+    notify()
+  }
+  btn.onclick = async () => {
+    if (root.classList.contains('fs-fake')) return fake(false)
+    if (cur() === root) return (document.exitFullscreen || document.webkitExitFullscreen).call(document)
+    try {
+      if (!req) throw new Error('unsupported')
+      await req.call(root)
+    } catch {
+      fake(true)
+    }
+  }
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && root.classList.contains('fs-fake')) fake(false) })
+  document.addEventListener('fullscreenchange', notify)
+  document.addEventListener('webkitfullscreenchange', notify)
+  sync()
+  getToolbar(root).append(btn)
+}
+
+export function addFullscreenAll(selector = '.demo') {
+  document.querySelectorAll(selector).forEach(addFullscreen)
+}

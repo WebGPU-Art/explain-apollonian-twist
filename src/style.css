@@ -45,7 +45,23 @@ details{margin:12px 0}summary{cursor:pointer;color:var(--acc)}
 .stepper button{min-width:34px}.stepper button.on{background:var(--acc);color:#0a0d08;border-color:var(--acc);font-weight:600}
 .st-text{min-height:7em}
 .demo{position:relative}
-.pausebtn{position:absolute;top:10px;right:10px;z-index:3;background:#07090ccc;backdrop-filter:blur(4px);padding:3px 10px}
-.pausebtn:hover{border-color:var(--acc)}
-.demo > .pausebtn{top:34px;right:22px}
-.play .stage .pausebtn{top:12px;right:12px}
+.tools{position:absolute;top:10px;right:10px;z-index:3;display:flex;gap:6px}
+.demo > .tools{top:34px;right:22px}
+.play .stage .tools{top:12px;right:12px}
+.tools button{background:#07090ccc;backdrop-filter:blur(4px);padding:3px 10px}
+.tools button:hover{border-color:var(--acc)}
+.fsbtn{order:2}
+/* 单个 demo 全屏 */
+.demo:fullscreen,.demo.fs-fake{background:var(--bg);padding:16px;overflow:auto;margin:0;border-radius:0;border:0;display:flex;flex-direction:column;justify-content:center}
+.demo:fullscreen .two{grid-template-columns:auto minmax(260px,1fr);align-items:start}
+.demo:fullscreen canvas.sq,.demo.fs-fake canvas.sq{width:auto;height:calc(100vh - 80px);max-width:100%}
+.demo:fullscreen canvas.wide,.demo.fs-fake canvas.wide{aspect-ratio:auto;width:100%;height:calc(100vh - 170px)}
+.demo:fullscreen .stack,.demo.fs-fake .stack{width:fit-content;max-width:100%}
+.demo:fullscreen .stack canvas.ov,.demo.fs-fake .stack canvas.ov{width:100%;height:100%}
+.demo:fullscreen canvas.plane,.demo.fs-fake canvas.plane{width:auto;height:calc(100vh - 80px)}
+.demo:fullscreen pre.orbit,.demo.fs-fake pre.orbit{max-height:calc(100vh - 220px)}
+@media(max-width:800px){.demo:fullscreen .two{grid-template-columns:1fr}.demo:fullscreen canvas.sq,.demo.fs-fake canvas.sq{height:auto;width:100%}}
+.demo.fs-fake .two{grid-template-columns:auto minmax(260px,1fr);align-items:start}
+.demo.fs-fake{position:fixed;inset:0;z-index:100;width:auto;height:auto}
+.fs-lock,.fs-lock body{overflow:hidden}
+@media(max-width:800px){.demo.fs-fake .two{grid-template-columns:1fr}.demo.fs-fake canvas.sq{height:auto;width:100%}}

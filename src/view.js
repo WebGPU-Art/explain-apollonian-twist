@@ -1,4 +1,4 @@
-import { getDevice, FullscreenPass, fitCanvas, onVisible, buildControls, showError } from './gpu.js'
+import { getDevice, FullscreenPass, fitCanvas, onVisible, buildControls, showError, getToolbar } from './gpu.js'
 import { SHADER_WGSL, DEFAULTS, packUniforms } from './shader.js'
 
 // 把整个着色器画进一个 canvas:支持拖动平移、滚轮缩放、时间播放、控件、叠加层
@@ -54,7 +54,7 @@ export async function mountShader(root, opts = {}) {
     btn.type = 'button'
     syncBtn = () => { btn.textContent = params.play ? '⏸ 暂停' : '▶ 播放' }
     btn.onclick = () => { params.play = params.play ? 0 : 1; syncBtn(); api.refresh(); mark() }
-    ;(root.querySelector('.stack') || canvas.parentElement).append(btn)
+    ;getToolbar(root).append(btn)
     syncBtn()
   }
   const baseRefresh = api.refresh

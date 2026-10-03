@@ -1,3 +1,4 @@
+import { addFullscreenAll } from '../gpu.js'
 import { mountViewer } from './viewer3d.js'
 import { mountSlice } from './slice2d.js'
 import { mountFold, mountInversion, mountMarch } from './demos2d.js'
@@ -67,3 +68,5 @@ mountViewer($('#shade-3d'), {
   camera: { dist: 3.2, yaw: 1.1, pitch: 0.15 },
   controls: [C.mode, C.nIters, C.stepK, C.speed, C.res],
 })
+
+addFullscreenAll()

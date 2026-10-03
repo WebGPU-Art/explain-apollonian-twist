@@ -1,4 +1,4 @@
-import { getDevice, FullscreenPass, fitCanvas, onVisible, buildControls, showError } from '../gpu.js'
+import { getDevice, FullscreenPass, fitCanvas, onVisible, buildControls, showError, getToolbar } from '../gpu.js'
 import { SCENE_WGSL, SCENE_DEFAULTS } from './scene3d.js'
 
 // 一个 3D 视窗:轨道相机(拖动旋转、滚轮缩放)+ 一组控件
@@ -103,9 +103,10 @@ export async function mountViewer(root, opts = {}) {
     btn.type = 'button'
     const sync = () => { btn.textContent = paused ? '▶ 播放' : '⏸ 暂停' }
     btn.onclick = () => { paused = !paused; sync(); mark() }
-    ;(root.querySelector('.stack') || canvas.parentElement).append(btn)
+    ;getToolbar(root).append(btn)
     sync()
   }
+  window.addEventListener('resize', () => mark())
   return { params, cam, refresh, redraw: () => { mark() } }
 }
 

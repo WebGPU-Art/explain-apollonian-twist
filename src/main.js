@@ -1,3 +1,4 @@
+import { addFullscreenAll } from './gpu.js'
 import { mountShader } from './view.js'
 import { mountFold, mountInversion, drawSide } from './demos2d.js'
 import { MODES, DEFAULTS, STAGES } from './shader.js'
@@ -190,3 +191,5 @@ mountShader($('#color-demo'), {
   }).then((a) => { api = a; go(0) })
   go(0)
 }
+
+addFullscreenAll()
