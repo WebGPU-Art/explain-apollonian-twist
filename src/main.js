@@ -1,6 +1,7 @@
 import { addFullscreenAll } from './gpu.js'
 import { mountShader } from './view.js'
-import { mountFold, mountInversion, drawSide } from './demos2d.js'
+import { mountFold, mountInversion } from './demos2d.js'
+import { mountRelay } from './relay.js'
 import { MODES, DEFAULTS, STAGES } from './shader.js'
 import { weird, lightGeom, liftSteps } from './math.js'
 import glsl from './apollian-twist.glsl?raw'
@@ -22,6 +23,7 @@ mountShader($('#hero'), {
 
 mountFold($('#fold-demo'))
 mountInversion($('#inv-demo'))
+mountRelay($('#relay-demo'))
 
 // 3 · 迭代:点击取点,右边打印轨道
 {
@@ -98,52 +100,16 @@ mountShader($('#zoom-demo'), {
   controls: [R('z', 'z (weird 内部)', 1, 12, 0.05, 2), R('zoom', 'zoom (df 外部)', 0.15, 3, 0.01, 2), R('s', 's', 0.8, 2, 0.005), R('iters', '迭代次数', 1, 12, 1), R('time', '时间', 0, 60, 0.05, 2)],
 })
 
-// 6 · 地板与灯
-{
-  const root = $('#light-demo')
-  const side = root.querySelector('canvas.side')
-  const readout = root.querySelector('.readout')
-  let pick = [0.35, 0.2]
-  const drawAll = (ctx, api, w, h, dpr) => {
-    const P = api.params
-    const g = lightGeom(pick, P, P.time)
-    // 俯视图上标出采样点
-    const mark = (pt, color, r) => {
-      const [x, y] = api.toPixel(pt[0], pt[2], w, h)
-      ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x, y, r * dpr, 0, 7); ctx.fill()
-      ctx.strokeStyle = '#000'; ctx.lineWidth = dpr; ctx.stroke()
-    }
-    const link = (a, b, color) => {
-      const [x0, y0] = api.toPixel(a[0], a[2], w, h), [x1, y1] = api.toPixel(b[0], b[2], w, h)
-      ctx.strokeStyle = color; ctx.lineWidth = 1.5 * dpr; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke()
-    }
-    link(g.pp, g.bp, '#ffffffaa'); link(g.bp, g.sp1, '#ffe9a0aa'); link(g.bp, g.sp2, '#ff9ad0aa')
-    mark(g.pp, '#ffffff', 5); mark(g.bp, '#6ef0c0', 5); mark(g.sp1, '#ffe9a0', 6); mark(g.sp2, '#ff9ad0', 6)
-    // 侧视图
-    const sdpr = Math.min(window.devicePixelRatio || 1, 2)
-    const sw = Math.round(side.clientWidth * sdpr), sh = Math.round(side.clientHeight * sdpr)
-    if (side.width !== sw || side.height !== sh) { side.width = sw; side.height = sh }
-    drawSide(side.getContext('2d'), g, P, sw, sh, sdpr)
-    const shadow = (sd) => (sd < 0.01 ? '被挡住' : sd < 0.05 ? '擦边' : '穿过空隙')
-    readout.innerHTML = `p = (${pick[0].toFixed(2)}, ${pick[1].toFixed(2)}) · bp 与 pp 相差 ${Math.hypot(g.bp[0] - g.pp[0], g.bp[2] - g.pp[2]).toFixed(3)}<br>` +
-      `<span style="color:#ffe9a0">灯1</span>:sd1 = ${g.sd1.toFixed(3)}(${shadow(g.sd1)})→ 贡献 ${g.c1.toFixed(3)}<br>` +
-      `<span style="color:#ff9ad0">灯2</span>:sd2 = ${g.sd2.toFixed(3)}(${shadow(g.sd2)})→ 贡献 ${g.c2.toFixed(3)}`
-  }
-  mountShader(root, {
-    params: { mode: 3, play: 0, time: 5, speed: 1, floorB: -0.125 },
-    clickPick: true,
-    dragPick: true,
-    pan: true,
-    dprScale: 0.6,
-    controls: [
-      modeSel([[3, '只看地板上的光'], [2, '距离场等值线'], [0, '最终画面']]),
-      R('floorB', '地板深度 b', -1.2, -0.01, 0.005, 3), R('lightH', '灯高', 0.3, 3, 0.01, 2), R('camT', '相机高度', 1.5, 20, 0.1, 1),
-      R('ss', 'ss', 1, 60, 0.5, 1), K('bugFix', '修正 sp2'), R('time', '时间', 0, 60, 0.05, 2),
-    ],
-    onPick: (w) => { pick = w },
-    overlay: drawAll,
-  })
-}
+// 7 · 地板与灯(简述)
+mountShader($('#light-demo'), {
+  params: { mode: 3, play: 1, speed: 0.5, time: 5, floorB: -0.125 },
+  dprScale: 0.6,
+  controls: [
+    modeSel([[3, '只看地板上的光'], [4, '只看曲线与辉光'], [0, '最终画面']]),
+    R('floorB', '地板深度 b', -1.2, -0.01, 0.005, 3), R('lightH', '灯高', 0.3, 3, 0.01, 2),
+    K('bugFix', '修正 sp2'), K('play', '动画'),
+  ],
+})
 
 // 7 · 配色
 mountShader($('#color-demo'), {

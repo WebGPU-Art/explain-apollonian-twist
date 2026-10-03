@@ -35,10 +35,11 @@
     <li><a href="#build">一步步搭出画面(8 步)</a></li>
     <li><a href="#fold">折叠</a></li>
     <li><a href="#inv">球反演</a></li>
-    <li><a href="#iter">apollian:迭代与距离</a></li>
+    <li><a href="#relay">迭代怎么一轮接一轮</a></li>
+    <li><a href="#iter">真正的 apollian(4D 轨道表)</a></li>
     <li><a href="#twist">weird:第四维的 twist</a></li>
     <li><a href="#zoom">两层缩放 z 与 zoom</a></li>
-    <li><a href="#light">地板与两盏灯</a></li>
+    <li><a href="#light">地板与阴影(简述)</a></li>
     <li><a href="#color">配色、辉光与后处理</a></li>
     <li><a href="#table">参数速查与源码</a></li>
   </ol>
@@ -57,7 +58,7 @@
       </div>
     </div>
   </div>
-  <p>后面的 1–7 节,就是把这 8 步里的黑盒——尤其是第 ② 步 <code>df(p)</code> 和第 ⑥ 步地板上的光——一个个打开。</p>
+  <p>后面的章节,就是把这 8 步里的黑盒——尤其是第 ② 步 <code>df(p)</code>——一个个打开。重点是“迭代怎么一轮接一轮”那一节。</p>
 
   <h2 id="fold">1 · 折叠</h2>
   <p><code>apollian()</code> 每一轮的第一行:</p>
@@ -91,8 +92,44 @@ scale   *= k;         // 记录累计的放大倍数</pre>
     </div>
   </div>
 
-  <h2 id="iter">3 · apollian:迭代与距离</h2>
-  <p>把“折叠 + 反演”重复 7 次(原作固定写死 7,这里可调),然后:</p>
+  <h2 id="relay">3 · 迭代怎么一轮接一轮</h2>
+  <p>前两节分别看了“折叠”和“反演”。现在把它们接起来。先说三句话:</p>
+  <ol>
+    <li><b>每一轮是同一台机器</b>:先折叠,再反演。每一轮做的事一模一样,只是输入不同。</li>
+    <li><b>上一轮的输出,原封不动就是下一轮的输入</b>:反演后的 <code>p</code> 直接交给下一轮的折叠。同时 <code>scale</code> 一路累乘 <code>k</code>。</li>
+    <li><b>只在最后量一次</b>:循环结束后,在最深的那个坐标系里看 <code>|p.y|</code>(离平面 y=0 多远),再除以 <code>scale</code> 换算回最初的空间。</li>
+  </ol>
+  <pre>for (int i = 0; i &lt; 7; ++i) {
+  p        = -1.0 + 2.0*fract(0.5*p+0.5);   // ① 折叠:平移回盒子 [-1,1]
+  float r2 = dot(p,p);
+  float k  = s/r2;
+  p       *= k;                              // ② 反演:p → s·p/|p|²  (下一轮的 p 就是它)
+  scale   *= k;                              // ③ 记账:到目前为止一共放大了多少倍
+}
+return abs(p.y)/scale;                       // ④ 最后量一次</pre>
+  <p><b>衔接的关键</b>:反演会把靠近原点的点放大很多(<code>k = s/r² ≫ 1</code>),所以反演后的点常常<b>跑出盒子</b>。下一轮的折叠又把它平移回盒子,接着再反演。于是靠近原点的一小块区域,每经过一轮都会被放大并重新铺满一遍“盒子”,等于把<b>整台机器在这一小块上重放一次</b>——这就是自相似(圆里套圆)的来源。</p>
+  <p>为什么这是“默比乌斯变换”:平移(折叠)和球反演(在复平面上就是 <code>z → s / z̄</code>)都是默比乌斯型的变换,它们交替作用生成的就是一个 Kleinian 群的轨道。问“原始点 p₀ 在不在曲线上”,等价于问“p₀ 被这串变换送到最深处后,是不是正好落在 y = 0 上”。所以<b>分形曲线 = 平面 y=0 在这串变换下的原像</b>:每多一轮,就多一层原像,圆里就多套一层圆。</p>
+  <p>下面是一个 2D 简化版(只保留 x、y,着色器里是 x、y、z、w 四个分量,逻辑完全相同),把一个点的旅程一轮一格画出来。拖动左图的红点:右边每一格的“进入”就是上一格的“反演后”,格与格之间的箭头就是那个交接。</p>
+  <div class="demo" id="relay-demo">
+    <div class="ctl">
+      <label>s <input type="range" name="s" min="0.6" max="2" step="0.01" value="1.2"><output class="s"></output></label>
+      <label>迭代轮数 <input type="range" name="n" min="1" max="6" step="1" value="3"><output class="n"></output></label>
+    </div>
+    <div class="relay">
+      <div class="inputcol">
+        <canvas class="input sq"></canvas>
+        <p class="hint">输入空间。白线是“迭代 n 轮后落在 y=0 上”的点,也就是分形曲线;蓝框是中心格 [−1,1]²,灰线是其它格子的边界(每个格子里的内容都一样)。红点是起点 p₀,右边追踪的就是它。</p>
+      </div>
+      <div class="filmcol">
+        <div class="film"></div>
+        <p class="summary readout"></p>
+      </div>
+    </div>
+    <p class="hint">每一格里:绿线是“目标线 y = 0”;蓝框是中心盒子;虚线圆是反演圆(半径 √s);白圈是进入的点,青点是折叠后,黄点是反演后。试试:① 把红点拖近原点,看 k 变得多大、黄点飞到哪;② 把轮数拉到 6,看点怎样一次次被折回盒子;③ 把红点拖到左图的白线上,最后一格的 d 会接近 0。</p>
+  </div>
+
+  <h2 id="iter">4 · 真正的 apollian:四维轨道表</h2>
+  <p>上一节的 2D 简化版换回真正的 4D(x、y、z、w)就是着色器里的 <code>apollian()</code>。循环 7 次(原作写死 7,这里可调),最后:</p>
   <pre>return abs(p.y)/scale;</pre>
   <p>迭代结束时的 <code>p</code> 处在最深一层的坐标系里,那里只放了一个最简单的形状:平面 <code>y = 0</code>,它的距离就是 <code>|p.y|</code>。每次反演都把长度放大 <code>k</code> 倍,回到原空间要除以累计的 <code>scale</code>,所以这是一个距离估计。<b>一个平面,经过逐层折叠 + 反演,就变成了布满圆的分形</b>。</p>
   <p>因为是 <code>abs</code>,返回值<b>永远 ≥ 0</b>:没有“里面”,只有零集(曲线)本身。下图用等值线显示 d,白色是曲线。把迭代次数从 0 拖到 7:0 次是一条直线;每多一次,圆里就多一层圆。</p>
@@ -109,7 +146,7 @@ scale   *= k;         // 记录累计的放大倍数</pre>
 
   <p><b>怎么读这张表</b>:选一个靠近曲线的点,看 d<sub>i</sub> 一栏——每多迭代一轮,d<sub>i</sub> 往往变得更小、更准(因为 scale 越来越大,同样的 |p.y| 对应的真实长度就更小)。选一个远离曲线的点,d<sub>i</sub> 则几乎不变。r² 一栏很小的那些行(k 很大)就是“钻进了小圆里”的那几轮。</p>
 
-  <h2 id="twist">4 · weird:第四维的 twist</h2>
+  <h2 id="twist">5 · weird:第四维的 twist</h2>
   <p><code>apollian()</code> 吃的是 <code>vec4</code>。屏幕只有 2D,<code>weird()</code> 要负责把 2D 点“编织”成一个 4D 点:</p>
   <pre>vec4 off = vec4(r*PSIN(tm*sqrt(3.0)), r*PSIN(tm*sqrt(1.5)), r*PSIN(tm*sqrt(2.0)), 0.0);
 vec4 pp  = vec4(p.x, p.y, 0.0, 0.0) + off;     // z 分量由 off 提供
@@ -135,7 +172,7 @@ pp /= z;                                        // z = 4</pre>
     </div>
   </div>
 
-  <h2 id="zoom">5 · 两层缩放:z 与 zoom</h2>
+  <h2 id="zoom">6 · 两层缩放:z 与 zoom</h2>
   <p>有两个容易混淆的缩放:</p>
   <pre>float df(vec2 p) {
   const float zoom = 0.5;
@@ -151,29 +188,15 @@ pp /= z;                                        // z = 4</pre>
     </div>
   </div>
 
-  <h2 id="light">6 · 地板与两盏灯</h2>
-  <p>只有曲线的话,画面是平的。作者加了一块“地板”,让曲线投下阴影,而且是<b>透过曲线平面看到的阴影</b>:</p>
-  <ol>
-    <li>相机在 <code>(0, 10, 0)</code>,俯视。屏幕点 <code>p</code> 对应曲线平面 <code>y=0</code> 上的 <code>pp = (p.x, 0, p.y)</code>。</li>
-    <li>这条射线继续往下,打到另一个平面 <code>y = b = -0.125</code>,得到地板上的点 <code>bp</code>。</li>
-    <li>从 <code>bp</code> 朝两盏灯(高度 1.25,位置 <code>(±0.5, 1.25, 0.5)</code>)各发一条射线,必然穿过 <code>y=0</code> 的曲线平面,交点是 <code>sp1</code>、<code>sp2</code>。</li>
-    <li>在这两个交点取 <code>df</code>:<code>sd ≈ 0</code> 说明光线正好穿过曲线(被挡住),<code>sd</code> 大说明穿过空隙(被照亮)。亮度 = <code>(1 − exp(−15·sd)) / 距离²</code>。</li>
-  </ol>
-  <p>所以地板上的光是“曲线图案”经过两次不同方向的投影,再叠起来的结果。因为相机几乎垂直向下,<code>bp</code> 和 <code>pp</code> 差别很小,而 <code>sp1</code>、<code>sp2</code> 会被灯的位置推开,阴影因此相对曲线本体产生视差错位,画面立刻有了“深度”。</p>
+  <h2 id="light">7 · 地板与阴影(简述)</h2>
+  <p>阴影部分只是装饰,不影响分形本身,所以只讲思路:相机从正上方俯视,射线穿过曲线平面(<code>y=0</code>)后继续往下,打在略低一点的“地板”(<code>y=b=−0.125</code>)上;从地板上这个点朝两盏灯各发一条射线,这两条射线会再次穿过曲线平面,在穿过处取 <code>df</code>:接近 0 说明被曲线挡住(暗),很大说明从空隙穿过(亮)。亮度 = <code>(1 − exp(−15·d)) / 距离²</code>。因为光线斜着穿过,阴影相对曲线本体有视差,画面就有了深度。</p>
+  <p>想直观感受,切换下面的“视图”,对比“只看地板上的光”和最终画面;拖动“地板深度”,视差会越来越明显。(原作算第二盏灯的交点时用了 <code>st1</code> 而不是 <code>st2</code>,应该是笔误,“修正 sp2”开关可以对比。)</p>
   <div class="demo" id="light-demo">
-    <div class="two">
-      <div><div class="stack"><canvas class="gl sq"></canvas><canvas class="ov sq"></canvas></div></div>
-      <div>
-        <canvas class="side"></canvas>
-        <p class="readout"></p>
-        <div class="ctl"></div>
-        <p class="hint">左图是俯视的“只看地板上的光”,点击或拖动选择一个屏幕点:白点是 pp,青点是 bp,黄/粉点是两盏灯穿过曲线平面的位置 sp1/sp2。右上是按真实比例画的侧视图(x–y 投影)。把“地板深度”拉大,视差就非常明显。</p>
-        <p class="hint">彩蛋:原作算 <code>sp2</code> 时用了 <code>st1</code> 而不是 <code>st2</code>(应该是笔误)。勾上“修正 sp2”,第二盏灯的投影会和侧视图里画的射线严格对上,画面也会稍有不同;默认保持原作行为。</p>
-      </div>
-    </div>
+    <div class="stack"><canvas class="gl wide"></canvas></div>
+    <div class="ctl"></div>
   </div>
 
-  <h2 id="color">7 · 配色、辉光与后处理</h2>
+  <h2 id="color">8 · 配色、辉光与后处理</h2>
   <pre>float l   = length(p);
 float hue = fract(0.75*l-0.3*TIME)+0.3+0.15;     // 按到原点的距离分色相,随时间向外流动
 float sat = 0.75*tanh(2.0*l);                    // 中心偏白,外围饱和
@@ -187,7 +210,7 @@ col  += 0.5*sqrt(bcol.zxy)*exp(-(10.0+100.0*tanh(l))*max(d, 0.0));  // 曲线两
     <div class="ctl"></div>
   </div>
 
-  <h2 id="table">8 · 参数速查与源码</h2>
+  <h2 id="table">9 · 参数速查与源码</h2>
   <table>
     <tr><th>位置</th><th>值</th><th>作用</th></tr>
     <tr><td><code>apollian</code> 循环</td><td>7</td><td>折叠 + 反演轮数,决定圆的嵌套层数。</td></tr>

@@ -229,34 +229,3 @@ export function mountInversion(root) {
   draw()
 }
 
-// 侧视图:把 color() 里的 3D 光路投影到 x–y 平面(按真实比例)
-export function drawSide(ctx, g, P, w, h, dpr) {
-  const X0 = -1.7, X1 = 1.7, Y0 = -0.45, Y1 = 1.7
-  const X = (x) => ((x - X0) / (X1 - X0)) * w
-  const Y = (y) => (1 - (y - Y0) / (Y1 - Y0)) * h
-  ctx.fillStyle = '#05060a'
-  ctx.fillRect(0, 0, w, h)
-  const line = (x0, y0, x1, y1, c, lw = 1.2, dash) => {
-    ctx.strokeStyle = c; ctx.lineWidth = lw * dpr; ctx.setLineDash(dash ? dash.map((v) => v * dpr) : [])
-    ctx.beginPath(); ctx.moveTo(X(x0), Y(y0)); ctx.lineTo(X(x1), Y(y1)); ctx.stroke(); ctx.setLineDash([])
-  }
-  const pt = (x, y, c, r = 5) => { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(X(x), Y(y), r * dpr, 0, 7); ctx.fill() }
-  const txt = (t, x, y, c = '#8e9a92') => { ctx.fillStyle = c; ctx.font = `${11 * dpr}px sans-serif`; ctx.fillText(t, X(x), Y(y)) }
-  line(X0, 0, X1, 0, '#9fd36a', 2.5)
-  line(X0, P.floorB, X1, P.floorB, '#5a6a8a', 2)
-  txt('y = 0  曲线所在的平面 df()', X0 + 0.05, 0.07, '#9fd36a')
-  txt(`y = ${P.floorB.toFixed(3)}  “地板”`, X0 + 0.05, P.floorB - 0.07, '#8aa0d0')
-  // 相机射线(几乎垂直向下)
-  line(g.pp[0] * (P.camT - 1.7) / P.camT, 1.7, g.pp[0], 0, '#ffffff66', 1.2, [4, 4])
-  line(g.pp[0], 0, g.bp[0], P.floorB, '#ffffffaa', 1.5)
-  // 两条朝灯的“阴影射线”
-  line(g.bp[0], P.floorB, g.lp1[0], g.lp1[1], '#ffe9a066', 1.2)
-  line(g.bp[0], P.floorB, g.lp2[0], g.lp2[1], '#ff9ad066', 1.2)
-  pt(g.lp1[0], g.lp1[1], '#ffe9a0', 6); txt('灯1', g.lp1[0] + 0.05, g.lp1[1] + 0.04)
-  pt(g.lp2[0], g.lp2[1], '#ff9ad0', 6); txt('灯2', g.lp2[0] + 0.05, g.lp2[1] + 0.04)
-  pt(g.pp[0], 0, '#ffffff', 5)
-  pt(g.bp[0], P.floorB, '#6ef0c0', 5); txt('bp', g.bp[0] + 0.04, P.floorB - 0.06, '#6ef0c0')
-  pt(g.sp1[0], 0, '#ffe9a0', 5); txt('sp1', g.sp1[0] + 0.03, 0.12, '#ffe9a0')
-  pt(g.sp2[0], 0, '#ff9ad0', 5); txt('sp2', g.sp2[0] + 0.03, -0.1, '#ff9ad0')
-  txt('相机在正上方 y = ' + P.camT + ' ↑', -0.3, 1.62)
-}
